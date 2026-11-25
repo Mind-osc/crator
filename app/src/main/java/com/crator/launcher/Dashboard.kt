@@ -374,12 +374,12 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         when (id) {
             "shortcuts" -> Column(mod, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 visibleShortcuts.chunked(4).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { s ->
                             val on = s.label == "Φακός" && torch
                             val (tc, ta) = LocalDashStyle.current
                             Column(
-                                Modifier.weight(1f).aspectRatio(1f)
+                                Modifier.weight(1f).fillMaxHeight()
                                     .smokedGlass(RoundedCornerShape(22.dp), alpha = if (on) 0.9f else ta, tint = if (on) accent else tc)
                                     .clickable(enabled = !editMode) { s.run() },
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -455,7 +455,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         LocalDashStyle provides (Color(prefs.dashColor) to prefs.dashOpacity / 100f)
     ) {
     Box(Modifier.fillMaxSize()) {
-    FitToHeight(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Κεφαλίδα
         Row(Modifier.fillMaxWidth().padding(6.dp, 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -518,7 +518,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                     }
                     .then(if (!editMode) Modifier.longPress { editMode = true } else Modifier)
             ) {
-                unit(id, if (id == "shortcuts") Modifier.fillMaxWidth() else Modifier.fillMaxSize())
+                unit(id, Modifier.fillMaxSize())
                 if (editMode) {
                     Box(
                         Modifier.matchParentSize().pointerInput(id) {
@@ -552,14 +552,16 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
             }
         }
 
+        // Γεμίζει ακριβώς την οθόνη: γραμμές με tiles = 1 μερίδα, κάθε γραμμή κουμπιών = 0,62
+        val scRows = ((visibleShortcuts.size + 3) / 4).coerceAtLeast(1)
         Column(
-            Modifier.fillMaxWidth().onGloballyPositioned { container = it },
+            Modifier.fillMaxWidth().weight(1f).onGloballyPositioned { container = it },
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             rows.forEach { row ->
-                if (row.size == 1 && row[0] == "shortcuts") cell("shortcuts", Modifier.fillMaxWidth())
-                else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { id -> cell(id, Modifier.weight(1f).aspectRatio(1.18f)) }
+                if (row.size == 1 && row[0] == "shortcuts") cell("shortcuts", Modifier.fillMaxWidth().weight(scRows * 0.62f))
+                else Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { id -> cell(id, Modifier.weight(1f).fillMaxHeight()) }
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
