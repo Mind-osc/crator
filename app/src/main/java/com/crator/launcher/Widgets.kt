@@ -257,7 +257,7 @@ class CratorWidgetDef(val type: String, val name: String, val desc: String, val 
 val CRATOR_WIDGETS = listOf(
     CratorWidgetDef("settings", "Ρυθμίσεις Crator", "Γρήγορη πρόσβαση σε εικονίδια, dock, εφέ", 4, 1, Icons.Rounded.Tune),
     CratorWidgetDef("clock", "Ρολόι Crator", "Μεγάλο ρολόι με ημερομηνία", 4, 2, Icons.Rounded.AutoAwesome),
-    CratorWidgetDef("claude", "Μπάρα Claude", "Ρώτα τον Claude από την αρχική", 4, 1, Icons.Rounded.Search),
+    CratorWidgetDef("claude", "Μπάρα αναζήτησης", "Αναζήτηση εφαρμογών από την αρχική", 4, 1, Icons.Rounded.Search),
     CratorWidgetDef("system", "Σύστημα mini", "RAM, χώρος, μπαταρία", 4, 1, Icons.Rounded.Palette),
     CratorWidgetDef("toggles", "Συντομεύσεις", "Wi-Fi, Bluetooth, φακός, ρυθμίσεις, αρχεία", 4, 1, Icons.Rounded.Settings)
 )

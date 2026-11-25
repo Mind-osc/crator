@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalFoundationApi::class)
+
 package com.crator.launcher
 
 import android.annotation.SuppressLint
@@ -76,6 +78,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -327,22 +334,36 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         Shortcut("Crator", Icons.Rounded.Tune) { onOpenSettings() }
     )
 
+    var editTitle by remember { mutableStateOf(false) }
+    val d = LocalDensity.current
+    val visibleShortcuts = shortcuts.filter { it.label !in prefs.dashHiddenShortcuts }
+    CompositionLocalProvider(
+        LocalDensity provides Density(d.density * prefs.dashScale / 100f, d.fontScale),
+        LocalDashStyle provides (Color(prefs.dashColor) to prefs.dashOpacity / 100f)
+    ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Κεφαλίδα
+        // Κεφαλίδα: παρατεταμένο πάτημα για αλλαγή τίτλου / απόκρυψη υπότιτλου
         Column(Modifier.padding(6.dp, 8.dp)) {
-            Text("Σύστημα", color = Smoke.pearl, fontSize = 34.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp)
             Text(
-                "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · σε λειτουργία ${fmtUptime(stats.uptime)}",
-                color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp
+                prefs.dashTitle.ifEmpty { " " }, color = Smoke.pearl, fontSize = 34.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp,
+                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { editTitle = true })
+            )
+            if (prefs.dashShowSub) Text(
+                "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}, σε λειτουργία ${fmtUptime(stats.uptime)}",
+                color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = {
+                    prefs.dashShowSub = false
+                    android.widget.Toast.makeText(ctx, "Κρύφτηκε· επαναφορά από Ρυθμίσεις → Ταμπλό", android.widget.Toast.LENGTH_SHORT).show()
+                })
             )
         }
 
         // Συντομεύσεις
-        Card {
-            shortcuts.chunked(4).forEach { row ->
+        if (prefs.dashShortcuts && visibleShortcuts.isNotEmpty()) Card {
+            visibleShortcuts.chunked(4).forEach { row ->
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { s ->
                         Column(
@@ -363,7 +384,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
 
         // CPU
-        Card {
+        if (prefs.dashCpu) Card {
             Header(if (stats.cpuIsFreq) "CPU · συχνότητα" else "CPU · φόρτος", "%.0f%%".format(stats.cpuPct), accent)
             val soc = if (Build.VERSION.SDK_INT >= 31) "${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}".trim() else Build.HARDWARE
             Sub("$soc · ${stats.cores.size} πυρήνες")
@@ -381,7 +402,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
 
         // RAM + Χώρος
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (prefs.dashMem) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Card(Modifier.weight(1f)) {
                 Header("RAM", "", accent)
                 Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%")
@@ -398,7 +419,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
 
         // Δίκτυο
-        Card {
+        if (prefs.dashNet) Card {
             Header("Δίκτυο · ${stats.netType}", "↓ ${fmtRate(stats.rxRate)}", Color(0xFF6FC3FF))
             Sub(
                 "↑ ${fmtRate(stats.txRate)}" +
@@ -410,7 +431,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
 
         // Μπαταρία
-        Card(Modifier.clickable { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
+        if (prefs.dashBattery) Card(Modifier.clickable { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
             Header("Μπαταρία · ${stats.batStatus}", "${stats.batLevel}%", Color(0xFF9BE37D))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 84)
@@ -428,7 +449,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
 
         // Θερμικά
-        Card {
+        if (prefs.dashThermal) Card {
             Header("Θερμική κατάσταση", stats.thermal, Color(0xFFFF8A65))
             stats.headroom?.let { h ->
                 Sub("Περιθώριο πριν το throttling")
@@ -437,14 +458,23 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
         Spacer(Modifier.height(20.dp))
     }
+    }
+    if (editTitle) RenameDialog(prefs.dashTitle, { editTitle = false }) { prefs.dashTitle = it }
 }
+
+private val LocalDashStyle = androidx.compose.runtime.compositionLocalOf { Smoke.tint to 0.58f }
+
+val DASH_SHORTCUTS = listOf(
+    "Ρυθμίσεις", "Wi-Fi", "Bluetooth", "Αρχεία", "Μπαταρία", "Οθόνη", "Ήχος", "Χώρος",
+    "Εφαρμογές", "Δεδομένα", "Τοποθεσία", "Ασφάλεια", "Ειδοποιήσεις", "Φακός", "Developer", "Crator"
+)
 
 @Composable
 private fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     Column(
         modifier
             .fillMaxWidth()
-            .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.58f)
+            .let { m -> val (c, a) = LocalDashStyle.current; m.smokedGlass(RoundedCornerShape(26.dp), alpha = a, tint = c) }
             .padding(18.dp)
     ) { content() }
 }

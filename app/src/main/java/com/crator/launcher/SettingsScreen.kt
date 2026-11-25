@@ -92,12 +92,12 @@ private val SECTIONS = listOf(
     Section("home", "Αρχική οθόνη", "Πλέγμα, σελίδες, ρολόι, αναζήτηση, χρώματα", Icons.Rounded.Home),
     Section("icons", "Εικονίδια", "Σχήμα, μέγεθος, icon pack, ετικέτες, themed", Icons.Rounded.Palette),
     Section("dock", "Dock", "Στυλ, στοίχιση, φόντο, μέγεθος", Icons.Rounded.Dock),
-    Section("effects", "Εφέ & κινήσεις", "Αλλαγή σελίδων, άνοιγμα εφαρμογών, blur", Icons.Rounded.Animation),
+    Section("effects", "Εφέ & ταχύτητες", "Εφέ, ταχύτητα σε κάθε κίνηση, άμεση εκκίνηση", Icons.Rounded.Animation),
     Section("gestures", "Χειρονομίες", "Swipe πάνω/κάτω, διπλό tap", Icons.Rounded.Gesture),
     Section("folders", "Φάκελοι, widgets & badges", "Στυλ φακέλων, στρογγύλεμα widgets, ειδοποιήσεις", Icons.Rounded.Folder),
-    Section("drawer", "Συρτάρι εφαρμογών", "Στυλ, στήλες, κρυφές εφαρμογές", Icons.Rounded.Apps),
+    Section("drawer", "Συρτάρι εφαρμογών", "Στυλ, χρώματα, αναζήτηση, κρυφές εφαρμογές", Icons.Rounded.Apps),
     Section("claude", "Claude", "API key, μοντέλο, οδηγίες, εμφάνιση", Icons.Rounded.AutoAwesome),
-    Section("dash", "Ταμπλό συστήματος", "Αριστερή σελίδα, ρυθμός ανανέωσης", Icons.Rounded.Insights),
+    Section("dash", "Ταμπλό συστήματος", "Τίτλος, χρώμα, μέγεθος, περιεχόμενο", Icons.Rounded.Insights),
     Section("about", "Backup & σχετικά", "Αντίγραφο ρυθμίσεων, προεπιλογή launcher", Icons.Rounded.Backup)
 )
 
@@ -255,8 +255,12 @@ private fun HomeSection(p: Prefs) {
     SwitchPref("Δείκτης σελίδων", p.pageIndicator) { p.pageIndicator = it }
     Group("Ρολόι")
     ChoicePref("Στυλ ρολογιού", ClockStyle.entries, p.clockStyle, { it.label }) { p.clockStyle = it }
-    Group("Μπάρα αναζήτησης Claude")
+    Group("Μπάρα αναζήτησης")
     ChoicePref("Θέση", SearchPos.entries, p.searchPos, { it.label }) { p.searchPos = it }
+    SliderPref("Ύψος", p.searchHeight, 30..56, "dp") { p.searchHeight = it }
+    ColorPref("Χρώμα", p.searchColor) { p.searchColor = it }
+    SliderPref("Αδιαφάνεια", p.searchOpacity, 0..100, "%") { p.searchOpacity = it }
+    ColorPref("Χρώμα κειμένου & εικονιδίων", p.searchTextColor) { p.searchTextColor = it }
     Group("Εμφάνιση")
     SliderPref("Σκίαση ταπετσαρίας", p.wallpaperDim, 0..70, "%") { p.wallpaperDim = it }
     SwitchPref("Χρώματα από ταπετσαρία", p.dynamicColors, "Material You") { p.dynamicColors = it }
@@ -343,8 +347,16 @@ private fun EffectsSection(p: Prefs) {
     ChoicePref("Εφέ", PageEffect.entries, p.pageEffect, { it.label }) { p.pageEffect = it }
     Group("Άνοιγμα εφαρμογών")
     ChoicePref("Κίνηση", OpenAnim.entries, p.openAnim, { it.label }) { p.openAnim = it }
+    Group("Ταχύτητες")
+    SliderPref("Γενική ταχύτητα", p.animSpeed, 40..250, "%") { p.animSpeed = it }
+    SliderPref("Αλλαγή σελίδων", p.speedPage, 40..250, "%") { p.speedPage = it }
+    SliderPref("Συρτάρι, Claude, ρυθμίσεις", p.speedOverlay, 40..250, "%") { p.speedOverlay = it }
+    SliderPref("Μενού, φάκελοι, popups", p.speedSheet, 40..250, "%") { p.speedSheet = it }
+    SliderPref("Σύρσιμο & παραμερισμός", p.speedDrag, 40..250, "%") { p.speedDrag = it }
+    SliderPref("Πάτημα & εμφάνιση εικονιδίων", p.speedIcon, 40..250, "%") { p.speedIcon = it }
+    Group("Άνοιγμα εφαρμογών")
+    SwitchPref("Εκκίνηση με το άγγιγμα", p.instantLaunch, "Η εφαρμογή ανοίγει μόλις ακουμπήσεις, χωρίς να περιμένει να σηκώσεις το δάχτυλο") { p.instantLaunch = it }
     Group("Γενικά")
-    SliderPref("Ταχύτητα κινήσεων", p.animSpeed, 50..200, "%") { p.animSpeed = it }
     SliderPref("Ένταση blur", p.blurStrength, 0..40) { p.blurStrength = it }
     ChoicePref("Εφέ πατήματος εικονιδίων", PressEffect.entries, p.pressEffect, { it.label }) { p.pressEffect = it }
 }
@@ -390,7 +402,14 @@ private fun DrawerSection(p: Prefs, repo: AppRepository) {
     SliderPref("Στήλες", p.drawerCols, 3..6) { p.drawerCols = it }
     ColorPref("Χρώμα φόντου", p.drawerColor) { p.drawerColor = it }
     SliderPref("Αδιαφάνεια", p.drawerOpacity, 0..100, "%") { p.drawerOpacity = it }
-    SwitchPref("Άνοιγμα πληκτρολογίου", p.drawerKeyboard) { p.drawerKeyboard = it }
+    ColorPref("Χρώμα ετικετών", p.drawerLabelColor) { p.drawerLabelColor = it }
+    Group("Αναζήτηση στο συρτάρι")
+    SwitchPref("Μπάρα αναζήτησης", p.drawerSearch) { p.drawerSearch = it }
+    if (p.drawerSearch) {
+        ChoicePref("Θέση", listOf(false, true), p.drawerSearchBottom, { if (it) "Κάτω" else "Πάνω" }) { p.drawerSearchBottom = it }
+        SwitchPref("Άνοιγμα πληκτρολογίου", p.drawerKeyboard) { p.drawerKeyboard = it }
+    }
+    Text("Το χρώμα και το ύψος της μπάρας ρυθμίζονται στην Αρχική οθόνη → Μπάρα αναζήτησης.", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp))
     Group("Κρυφές εφαρμογές")
     repo.apps.value.forEach { app ->
         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -450,6 +469,28 @@ private fun DashSection(p: Prefs) {
     SwitchPref("Αριστερή σελίδα ταμπλό", p.dashboardEnabled, "RAM, CPU, χώρος, δίκτυο, μπαταρία + συντομεύσεις") { p.dashboardEnabled = it }
     SliderPref("Ανανέωση κάθε", p.dashRefresh, 500..5000, " ms") { p.dashRefresh = it }
     SliderPref("Ιστορικό γραφημάτων", p.dashHistory, 20..180, " σημεία") { p.dashHistory = it }
+    Group("Εμφάνιση")
+    var title by remember { mutableStateOf(p.dashTitle) }
+    OutlinedTextField(title, { title = it; p.dashTitle = it }, label = { Text("Τίτλος (κενό = χωρίς τίτλο)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    SwitchPref("Υπότιτλος (συσκευή, Android, χρόνος λειτουργίας)", p.dashShowSub) { p.dashShowSub = it }
+    SliderPref("Μέγεθος", p.dashScale, 70..130, "%") { p.dashScale = it }
+    ColorPref("Χρώμα καρτών", p.dashColor) { p.dashColor = it }
+    SliderPref("Αδιαφάνεια καρτών", p.dashOpacity, 0..100, "%") { p.dashOpacity = it }
+    Group("Περιεχόμενο")
+    SwitchPref("Συντομεύσεις", p.dashShortcuts) { p.dashShortcuts = it }
+    SwitchPref("CPU", p.dashCpu) { p.dashCpu = it }
+    SwitchPref("RAM & χώρος", p.dashMem) { p.dashMem = it }
+    SwitchPref("Δίκτυο", p.dashNet) { p.dashNet = it }
+    SwitchPref("Μπαταρία", p.dashBattery) { p.dashBattery = it }
+    SwitchPref("Θερμική κατάσταση", p.dashThermal) { p.dashThermal = it }
+    if (p.dashShortcuts) {
+        Group("Ποιες συντομεύσεις")
+        DASH_SHORTCUTS.forEach { name ->
+            SwitchPref(name, name !in p.dashHiddenShortcuts) { on ->
+                p.dashHiddenShortcuts = if (on) p.dashHiddenShortcuts - name else p.dashHiddenShortcuts + name
+            }
+        }
+    }
     Text("Οι μετρήσεις τρέχουν μόνο όσο βλέπεις τη σελίδα· μόλις φύγεις σταματούν για εξοικονόμηση μπαταρίας.", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp))
 }
 

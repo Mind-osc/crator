@@ -55,6 +55,7 @@ import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Wallpaper
@@ -95,6 +96,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -123,7 +125,11 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     var homeMenu by remember { mutableStateOf(false) }
     var pickerPkg by remember { mutableStateOf<String?>(null) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
-    var folderOrigin by remember { mutableStateOf(TransformOrigin.Center) }
+    var popupAnchor by remember { mutableStateOf(Offset.Zero) }
+    var folderAnchor by remember { mutableStateOf(Offset.Zero) }
+    var popupCtx by remember { mutableStateOf(PopupCtx()) }
+    var drawerSeed by remember { mutableStateOf("") }
+    var drawerSearchMode by remember { mutableStateOf(false) }
     val apps = repo.apps.value
     val byKey = remember(apps) { apps.associateBy { it.key } }
     val dashOffset = if (prefs.dashboardEnabled) 1 else 0
@@ -135,7 +141,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     val drag = remember { DragState() }
     val resumed = rememberResumed()
     val speed = prefs.animSpeed / 100f
-    fun dur(ms: Int) = (ms / speed).toInt()
+    fun dur(ms: Int) = Motion.fadeMs(ms, Motion.overlay)
     val homeIndex = (pager.currentPage - dashOffset).coerceAtLeast(0)
     drag.currentPage = pager.currentPage - dashOffset
     val anySheet = sheetApp != null || folderOpen != null || folderSheet != null || widgetSheet != null || homeMenu
@@ -161,6 +167,17 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         if (isDefault) bannerVisible = false
     }
 
+    val voiceLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+        val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (r.resultCode == android.app.Activity.RESULT_OK && !t.isNullOrBlank()) openSearch(t)
+    }
+    fun startVoice() {
+        val i = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Ποια εφαρμογή;")
+        runCatching { voiceLauncher.launch(i) }
+    }
+
     val homeEv = activity.homeEvents.intValue
     LaunchedEffect(homeEv) {
         if (homeEv > 0) {
@@ -179,6 +196,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
     }
     LaunchedEffect(overlay) {
+        if (overlay != Overlay.Drawer) { drawerSearchMode = false; drawerSeed = "" }
         activity.setBlurBehind(if (overlay == Overlay.Claude || overlay == Overlay.Drawer) prefs.blurStrength * 3 else 0)
     }
 
@@ -194,6 +212,15 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
     }
 
+    fun openFolder(id: String, b: android.graphics.Rect?) {
+        folderAnchor = b?.let { Offset(it.exactCenterX(), it.exactCenterY()) } ?: drag.lastPointer
+        folderOpen = id
+    }
+
+    fun openSearch(seed: String = "") {
+        drawerSeed = seed; drawerSearchMode = true; overlay = Overlay.Drawer
+    }
+
     fun openApp(app: AppInfo, b: android.graphics.Rect?) {
         Actions.launch(activity, app, b, prefs.openAnim)
         if (overlay == Overlay.Drawer || overlay == Overlay.Claude || folderOpen != null) {
@@ -203,6 +230,11 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
 
     // ---------- Drag & drop ----------
     fun beginDrag(item: String, src: DragSource, onTap: () -> Unit) {
+        popupAnchor = drag.lastPointer
+        popupCtx = PopupCtx(
+            inFolder = (src as? DragSource.InFolder)?.id ?: folderOpen,
+            fromDrawer = src == DragSource.Drawer && folderOpen == null
+        )
         if (prefs.lockLayout && src !is DragSource.Drawer) { onTap(); return }
         drag.start(item, src, onTap)
     }
@@ -346,14 +378,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         folderOpen != null || anySheet -> (prefs.blurStrength * 0.6f).dp
         else -> 0.dp
     }
-    val blur by animateDpAsState(blurTarget, Motion.soft(), label = "blur")
+    val blur by animateDpAsState(blurTarget, Motion.soft(Motion.overlay), label = "blur")
     val recede by androidx.compose.animation.core.animateFloatAsState(
         when {
             homeMenu || overlay == Overlay.Widgets -> 0.9f
             folderOpen != null || anySheet || overlay == Overlay.Drawer || overlay == Overlay.Claude -> 0.95f
             drag.active && drag.moved -> 0.97f
             else -> 1f
-        }, Motion.lively(), label = "recede"
+        }, Motion.lively(Motion.overlay), label = "recede"
     )
     val onDashboard = prefs.dashboardEnabled && pager.currentPage == 0
     val swipeDownA by rememberUpdatedState { act(prefs.swipeDown) }
@@ -394,8 +426,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            if (prefs.searchPos == SearchPos.Top && !onDashboard) SearchPill(prefs, Modifier.padding(16.dp, 8.dp)) { act(GestureAction.Claude) }
-            HorizontalPager(state = pager, modifier = Modifier.weight(1f), userScrollEnabled = !drag.active) { page ->
+            if (prefs.searchPos == SearchPos.Top && !onDashboard) SearchPill(prefs, Modifier.padding(16.dp, 8.dp), onVoice = { startVoice() }) { openSearch() }
+            HorizontalPager(
+                state = pager, modifier = Modifier.weight(1f), userScrollEnabled = !drag.active,
+                flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
+                    state = pager,
+                    snapAnimationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.86f, stiffness = 400f * Motion.speed * Motion.page * Motion.speed * Motion.page)
+                )
+            ) { page ->
                 Box(Modifier.fillMaxSize().pageEffect(pager, page, prefs.pageEffect)) {
                     if (prefs.dashboardEnabled && page == 0) {
                         Dashboard(
@@ -415,24 +453,24 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                                     else -> byKey[item]?.let { app -> beginDrag(item, DragSource.Home(idx, cell)) { sheetApp = app } }
                                 }
                             },
-                            onFolder = { id, b -> b?.let { folderOrigin = TransformOrigin(it.exactCenterX() / rootSize.width.coerceAtLeast(1), it.exactCenterY() / rootSize.height.coerceAtLeast(1)) }; folderOpen = id },
-                            onClaude = { act(GestureAction.Claude) },
+                            onFolder = ::openFolder,
+                            onClaude = { openSearch() },
                             onSettings = ::openSettings
                         )
                     }
                 }
             }
             if (prefs.pageIndicator) PageIndicator(pager, prefs.dashboardEnabled)
-            if (prefs.searchPos == SearchPos.AboveDock) SearchPill(prefs, Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) { act(GestureAction.Claude) }
+            if (prefs.searchPos == SearchPos.AboveDock) SearchPill(prefs, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), onVoice = { startVoice() }) { openSearch() }
             Dock(
                 prefs, byKey, drag,
                 onLaunch = ::openApp,
-                onFolder = { id, b -> b?.let { folderOrigin = TransformOrigin(it.exactCenterX() / rootSize.width.coerceAtLeast(1), it.exactCenterY() / rootSize.height.coerceAtLeast(1)) }; folderOpen = id },
+                onFolder = ::openFolder,
                 onItemLong = { i, item ->
                     if (Item.isFolder(item)) beginDrag(item, DragSource.Dock(i)) { folderSheet = Item.folderId(item) }
                     else byKey[item]?.let { app -> beginDrag(item, DragSource.Dock(i)) { sheetApp = app } }
                 },
-                onSearch = { act(GestureAction.Claude) }
+                onSearch = { openSearch() }
             )
         }
 
@@ -442,35 +480,33 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
 
         AnimatedVisibility(
             overlay == Overlay.Drawer,
-            enter = slideInVertically(Motion.lively()) { it / 3 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(), 0.96f, TransformOrigin(0.5f, 1f)),
-            exit = slideOutVertically(Motion.snappy()) { it / 3 } + fadeOut(tween(dur(180)))
+            enter = slideInVertically(Motion.lively(Motion.overlay)) { it / 3 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(Motion.overlay), 0.96f, TransformOrigin(0.5f, 1f)),
+            exit = slideOutVertically(Motion.snappy(Motion.overlay)) { it / 3 } + fadeOut(tween(dur(180)))
         ) {
             AppDrawer(
-                apps, prefs,
+                apps, prefs, drawerSeed, drawerSearchMode, byKey,
                 onLaunch = ::openApp,
                 onLong = { app -> beginDrag(app.key, DragSource.Drawer) { sheetApp = app } },
-                onAskClaude = { q -> claudeSeed = q; overlay = Overlay.Claude },
+                onFolder = ::openFolder,
+                onFolderLong = { id -> popupAnchor = drag.lastPointer; folderSheet = id },
                 onClose = { overlay = Overlay.None }
             )
         }
-        AnimatedVisibility(
-            folderOpen != null,
-            enter = fadeIn(tween(dur(160))) + scaleIn(Motion.lively(), 0.2f, folderOrigin),
-            exit = fadeOut(tween(dur(170))) + scaleOut(Motion.snappy(), 0.2f, folderOrigin)
-        ) {
-            val last = remember { mutableStateOf("") }
-            folderOpen?.let { last.value = it }
-            FolderPopup(
-                last.value, prefs, byKey,
+        Presence(folderOpen) { id ->
+            FolderMini(
+                id, folderAnchor, prefs, byKey,
                 onLaunch = ::openApp,
-                onAppLong = { app -> beginDrag(app.key, DragSource.InFolder(last.value)) { sheetApp = app } },
+                onAppLong = { app ->
+                    val src = if (id in prefs.drawerFolders) DragSource.Drawer else DragSource.InFolder(id)
+                    beginDrag(app.key, src) { sheetApp = app }
+                },
                 onClose = { folderOpen = null }
             )
         }
         AnimatedVisibility(
             overlay == Overlay.Claude,
-            enter = slideInVertically(Motion.lively()) { -it / 4 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(), 0.88f, TransformOrigin(0.5f, 0f)),
-            exit = slideOutVertically(Motion.snappy()) { -it / 4 } + fadeOut(tween(dur(180))) + scaleOut(Motion.snappy(), 0.94f, TransformOrigin(0.5f, 0f))
+            enter = slideInVertically(Motion.lively(Motion.overlay)) { -it / 4 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(Motion.overlay), 0.88f, TransformOrigin(0.5f, 0f)),
+            exit = slideOutVertically(Motion.snappy(Motion.overlay)) { -it / 4 } + fadeOut(tween(dur(180))) + scaleOut(Motion.snappy(Motion.overlay), 0.94f, TransformOrigin(0.5f, 0f))
         ) {
             ClaudePanel(
                 chat, prefs, apps, claudeSeed,
@@ -481,8 +517,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
         AnimatedVisibility(
             overlay == Overlay.Settings,
-            enter = slideInHorizontally(Motion.soft()) { it / 2 } + fadeIn(tween(dur(220))),
-            exit = slideOutHorizontally(Motion.snappy()) { it / 2 } + fadeOut(tween(dur(180)))
+            enter = slideInHorizontally(Motion.soft(Motion.overlay)) { it / 2 } + fadeIn(tween(dur(220))),
+            exit = slideOutHorizontally(Motion.snappy(Motion.overlay)) { it / 2 } + fadeOut(tween(dur(180)))
         ) {
             SettingsScreen(
                 activity, prefs, repo, chat, settingsSection,
@@ -492,8 +528,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
         AnimatedVisibility(
             overlay == Overlay.Widgets,
-            enter = slideInVertically(Motion.lively()) { it / 3 } + fadeIn(tween(dur(220))),
-            exit = slideOutVertically(Motion.snappy()) { it / 3 } + fadeOut(tween(dur(180)))
+            enter = slideInVertically(Motion.lively(Motion.overlay)) { it / 3 } + fadeIn(tween(dur(220))),
+            exit = slideOutVertically(Motion.snappy(Motion.overlay)) { it / 3 } + fadeOut(tween(dur(180)))
         ) {
             WidgetPicker(widgets, prefs, pickerPkg, homeIndex) { overlay = Overlay.None }
         }
@@ -519,12 +555,12 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             WidgetSheet(prefs, widgets, p, c, onClose = { widgetSheet = null })
         }
         Presence(folderSheet) { id ->
-            FolderSheet(id, prefs, byKey, onOpen = { folderSheet = null; folderOpen = id }, onClose = { folderSheet = null })
+            FolderMenuPopup(id, popupAnchor, prefs, onOpen = { folderSheet = null; folderAnchor = popupAnchor; folderOpen = id }, onClose = { folderSheet = null })
         }
         Presence(sheetApp) { app ->
-            AppSheet(
-                app, prefs, repo, activity,
-                onClose = { sheetApp = null },
+            AppPopup(
+                app, popupAnchor, popupCtx, prefs, repo, activity,
+                onClose = { sheetApp = null; folderOpen = null },
                 onAddHome = { prefs.placeOnHome(app.key, homeIndex) },
                 onWidgets = { sheetApp = null; pickerPkg = app.component.packageName; overlay = Overlay.Widgets },
                 hasWidgets = remember(app.key) { widgets.providers().any { it.provider.packageName == app.component.packageName } }
@@ -587,8 +623,8 @@ private fun HomePage(
                 val sx = sx0.coerceAtMost(prefs.cols); val sy = sy0.coerceAtMost(prefs.rows)
                 val shown = reflow[cell] ?: cell
                 val r = shown / prefs.cols; val c = shown % prefs.cols
-                val ox by animateDpAsState(cw * c, Motion.lively(), label = "ox")
-                val oy by animateDpAsState(ch * r, Motion.lively(), label = "oy")
+                val ox by animateDpAsState(cw * c, Motion.lively(Motion.drag), label = "ox")
+                val oy by animateDpAsState(ch * r, Motion.lively(Motion.drag), label = "oy")
                 if (r < prefs.rows) {
                 val dragging = drag.hiddenSource == DragSource.Home(index, cell)
                 val hovered = hoverAnchor == cell
@@ -713,7 +749,7 @@ private fun Dock(
                         val half = (size + 8.dp) * 0.55f
                         val shiftX by animateDpAsState(
                             when { gap == null -> 0.dp; iv.index >= gap -> half; else -> -half },
-                            Motion.lively(), label = "dockShift"
+                            Motion.lively(Motion.drag), label = "dockShift"
                         )
                         val lift = if (style == DockStyle.Arc && n > 1) {
                             val t = (pos - (n - 1) / 2f) / ((n - 1) / 2f)
@@ -995,20 +1031,25 @@ private fun PageIndicator(pager: PagerState, dash: Boolean) {
 }
 
 @Composable
-fun SearchPill(prefs: Prefs, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun SearchPill(prefs: Prefs, modifier: Modifier = Modifier, onVoice: (() -> Unit)? = null, onClick: () -> Unit) {
+    val h = prefs.searchHeight.dp
+    val tc = Color(prefs.searchTextColor)
     Row(
         modifier
             .fillMaxWidth()
-            .height(50.dp)
-            .smokedGlass(RoundedCornerShape(25.dp), alpha = (prefs.dockOpacity / 100f + 0.15f).coerceAtMost(1f), tint = Color(prefs.dockColor))
+            .height(h)
+            .smokedGlass(RoundedCornerShape(h / 2), alpha = prefs.searchOpacity / 100f, tint = Color(prefs.searchColor))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Icon(androidx.compose.material.icons.Icons.Rounded.Search, null, tint = tc, modifier = Modifier.size((h.value * 0.45f).dp))
         Spacer(Modifier.width(10.dp))
-        Text("Ρώτα τον Claude ή ψάξε", color = Smoke.mist, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        Icon(Icons.Rounded.Mic, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
+        Text("Αναζήτηση", color = tc, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+        if (onVoice != null) Icon(
+            Icons.Rounded.Mic, "Φωνητική αναζήτηση", tint = tc,
+            modifier = Modifier.size((h.value * 0.45f).dp).clip(CircleShape).clickable(onClick = onVoice)
+        )
     }
 }
 

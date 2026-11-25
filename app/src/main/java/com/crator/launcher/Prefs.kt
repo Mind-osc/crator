@@ -193,6 +193,38 @@ class Prefs(private val context: Context) {
     var badgeStyle by enm("badge_style", BadgeStyle.Count)
     var badgeColor by int("badge_color", 0xFFFF5A5F.toInt())
 
+    // ---------- Αναζήτηση ----------
+    var searchHeight by int("search_h", 40)
+    var searchColor by int("search_color", 0xFF15161F.toInt())
+    var searchOpacity by int("search_opacity", 55)
+    var searchTextColor by int("search_text", 0xFFA9ACBD.toInt())
+    var drawerSearch by bool("drawer_search", true)
+    var drawerSearchBottom by bool("drawer_search_bottom", false)
+    var drawerLabelColor by int("drawer_label", 0xFFF3F2F7.toInt())
+    var drawerFolders by PrefState(loadList("drawer_folders")) { saveList("drawer_folders", it) }
+
+    // ---------- Ταχύτητες (%) ----------
+    var speedOverlay by int("sp_overlay", 100)
+    var speedSheet by int("sp_sheet", 100)
+    var speedDrag by int("sp_drag", 100)
+    var speedIcon by int("sp_icon", 100)
+    var speedPage by int("sp_page", 100)
+    var instantLaunch by bool("instant_launch", false)
+
+    // ---------- Ταμπλό: εμφάνιση ----------
+    var dashTitle by str("dash_title", "Σύστημα")
+    var dashShowSub by bool("dash_sub", true)
+    var dashColor by int("dash_color", 0xFF14151D.toInt())
+    var dashOpacity by int("dash_opacity", 58)
+    var dashScale by int("dash_scale", 100)
+    var dashShortcuts by bool("dash_shortcuts", true)
+    var dashCpu by bool("dash_cpu", true)
+    var dashMem by bool("dash_mem", true)
+    var dashNet by bool("dash_net", true)
+    var dashBattery by bool("dash_bat", true)
+    var dashThermal by bool("dash_thermal", true)
+    var dashHiddenShortcuts by PrefState(loadList("dash_hidden_sc").toSet()) { saveList("dash_hidden_sc", it.toList()) }
+
     // ---------- Widgets ----------
     var widgetPadding by int("widget_pad", 6)
     var widgetCorner by int("widget_corner", 22)

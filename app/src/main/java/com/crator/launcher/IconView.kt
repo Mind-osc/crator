@@ -168,11 +168,22 @@ fun AppCell(
     showLabel: Boolean,
     onClick: (Rect?) -> Unit,
     onLongClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    labelColor: Color? = null
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
+    // «Εκκίνηση με το άγγιγμα»: ανοίγει τη στιγμή που ακουμπάς, όχι όταν σηκώνεις το δάχτυλο
+    val launchedOnPress = remember { booleanArrayOf(false) }
     val bounds = remember { arrayOfNulls<Rect>(1) }
+    androidx.compose.runtime.LaunchedEffect(pressed) {
+        if (pressed) launchedOnPress[0] = false
+        if (pressed && prefs.instantLaunch) {
+            kotlinx.coroutines.delay(55)
+            launchedOnPress[0] = true
+            onClick(bounds[0])
+        }
+    }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val target = if (!pressed) 1f else when (prefs.pressEffect) {
         PressEffect.Bounce -> 0.82f
@@ -182,7 +193,7 @@ fun AppCell(
     }
     val sc by animateFloatAsState(
         target,
-        if (prefs.pressEffect == PressEffect.Bounce) spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMediumLow) else tween(120),
+        if (prefs.pressEffect == PressEffect.Bounce) spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMediumLow * Motion.icon * Motion.icon) else tween((120 / Motion.icon).toInt()),
         label = "press"
     )
     val rot by animateFloatAsState(if (pressed && prefs.pressEffect == PressEffect.Tilt) -8f else 0f, label = "tilt")
@@ -190,7 +201,7 @@ fun AppCell(
         modifier
             .combinedClickable(
                 interactionSource = source, indication = null,
-                onClick = { onClick(bounds[0]) },
+                onClick = { if (launchedOnPress[0]) launchedOnPress[0] = false else onClick(bounds[0]) },
                 onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLongClick() }
             )
             .padding(vertical = 2.dp),
@@ -213,7 +224,7 @@ fun AppCell(
         if (showLabel) {
             Spacer(Modifier.height(5.dp))
             Text(
-                app.label, style = labelStyle(prefs), maxLines = prefs.labelLines,
+                app.label, style = labelStyle(prefs).let { if (labelColor != null) it.copy(color = labelColor) else it }, maxLines = prefs.labelLines,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp)
             )
         }

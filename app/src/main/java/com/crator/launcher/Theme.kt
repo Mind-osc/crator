@@ -83,13 +83,19 @@ fun cratorTypography(): Typography {
 
 /** Κινήσεις με ελατήρια: ό,τι κινείται, κινείται «οργανικά» */
 object Motion {
+    /** Γενική ταχύτητα και ανά κατηγορία (1 = κανονική) */
     var speed = 1f
-    private fun k(s: Float) = s * speed * speed
-    fun <T> soft(): SpringSpec<T> = spring(dampingRatio = 0.9f, stiffness = k(240f))
-    fun <T> lively(): SpringSpec<T> = spring(dampingRatio = 0.74f, stiffness = k(380f))
-    fun <T> snappy(): SpringSpec<T> = spring(dampingRatio = 0.92f, stiffness = k(900f))
-    fun <T> pop(): SpringSpec<T> = spring(dampingRatio = 0.46f, stiffness = k(520f))
-    fun fadeMs(ms: Int) = (ms / speed).toInt().coerceAtLeast(1)
+    var overlay = 1f
+    var sheet = 1f
+    var drag = 1f
+    var icon = 1f
+    var page = 1f
+    private fun k(s: Float, c: Float): Float { val v = speed * c; return s * v * v }
+    fun <T> soft(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.9f, stiffness = k(240f, c))
+    fun <T> lively(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.74f, stiffness = k(380f, c))
+    fun <T> snappy(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.92f, stiffness = k(900f, c))
+    fun <T> pop(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.46f, stiffness = k(520f, c))
+    fun fadeMs(ms: Int, c: Float = 1f) = (ms / (speed * c)).toInt().coerceAtLeast(1)
 }
 
 /** Φιμέ γυαλί: απόχρωση + λεπτή λάμψη από πάνω + φωτεινή ακμή */
@@ -122,8 +128,8 @@ val LocalPresence = compositionLocalOf<AnimatedVisibilityScope?> { null }
 @Composable
 fun <T : Any> Presence(
     value: T?,
-    enter: EnterTransition = fadeIn(tween(Motion.fadeMs(180))),
-    exit: ExitTransition = fadeOut(tween(Motion.fadeMs(160))),
+    enter: EnterTransition = fadeIn(tween(Motion.fadeMs(180, Motion.sheet))),
+    exit: ExitTransition = fadeOut(tween(Motion.fadeMs(160, Motion.sheet))),
     content: @Composable (T) -> Unit
 ) {
     var last by remember { mutableStateOf(value) }
@@ -141,12 +147,12 @@ fun Modifier.sheetMotion(): Modifier {
     val scope = LocalPresence.current ?: return this
     return with(scope) {
         this@sheetMotion.animateEnterExit(
-            enter = slideInVertically(Motion.lively()) { it / 3 } +
-                scaleIn(Motion.lively(), 0.9f, TransformOrigin(0.5f, 1f)) +
-                fadeIn(tween(Motion.fadeMs(160))),
-            exit = slideOutVertically(Motion.snappy()) { it / 4 } +
-                scaleOut(tween(Motion.fadeMs(160)), 0.96f, TransformOrigin(0.5f, 1f)) +
-                fadeOut(tween(Motion.fadeMs(120)))
+            enter = slideInVertically(Motion.lively(Motion.sheet)) { it / 3 } +
+                scaleIn(Motion.lively(Motion.sheet), 0.9f, TransformOrigin(0.5f, 1f)) +
+                fadeIn(tween(Motion.fadeMs(160, Motion.sheet))),
+            exit = slideOutVertically(Motion.snappy(Motion.sheet)) { it / 4 } +
+                scaleOut(tween(Motion.fadeMs(160, Motion.sheet)), 0.96f, TransformOrigin(0.5f, 1f)) +
+                fadeOut(tween(Motion.fadeMs(120, Motion.sheet)))
         )
     }
 }
@@ -161,8 +167,8 @@ fun PopIn(active: Boolean, ring: Boolean = false, modifier: Modifier = Modifier,
             s.snapTo(0.55f)
             if (ring) { r.snapTo(0f) }
             coroutineScope {
-                launch { s.animateTo(1f, Motion.pop()) }
-                if (ring) launch { r.animateTo(1f, tween(Motion.fadeMs(700))) }
+                launch { s.animateTo(1f, Motion.pop(Motion.icon)) }
+                if (ring) launch { r.animateTo(1f, tween(Motion.fadeMs(700, Motion.icon))) }
             }
         }
     }
@@ -179,3 +185,15 @@ fun PopIn(active: Boolean, ring: Boolean = false, modifier: Modifier = Modifier,
     ) { content() }
 }
 
+
+/** Είσοδος popup από τη γωνία που «ακουμπάει» το εικονίδιο */
+@Composable
+fun Modifier.popupMotion(origin: TransformOrigin): Modifier {
+    val scope = LocalPresence.current ?: return this
+    return with(scope) {
+        this@popupMotion.animateEnterExit(
+            enter = scaleIn(Motion.lively(Motion.sheet), 0.6f, origin) + fadeIn(tween(Motion.fadeMs(140, Motion.sheet))),
+            exit = scaleOut(Motion.snappy(Motion.sheet), 0.8f, origin) + fadeOut(tween(Motion.fadeMs(110, Motion.sheet)))
+        )
+    }
+}

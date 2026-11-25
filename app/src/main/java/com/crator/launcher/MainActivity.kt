@@ -64,6 +64,11 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = scheme, typography = cratorTypography()) {
                 val sysScale = remember { Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }
                 Motion.speed = if (sysScale == 0f) 8f else (prefs.animSpeed / 100f) / sysScale.coerceAtLeast(0.25f)
+                Motion.overlay = prefs.speedOverlay / 100f
+                Motion.sheet = prefs.speedSheet / 100f
+                Motion.drag = prefs.speedDrag / 100f
+                Motion.icon = prefs.speedIcon / 100f
+                Motion.page = prefs.speedPage / 100f
                 CompositionLocalProvider(LocalContentColor provides Smoke.pearl) {
                     // Επαναφόρτωση εικονιδίων όταν αλλάζει το pack
                     val first = remember { booleanArrayOf(true) }
