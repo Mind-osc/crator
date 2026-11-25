@@ -145,6 +145,18 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         settingsSection = section; overlay = Overlay.Settings
     }
 
+    // Banner «όρισε ως αρχική»: εμφανίζεται για λίγο μία φορά ανά εκκίνηση
+    val isDefault = isDefaultHome(activity, resumed)
+    var bannerVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(isDefault) {
+        if (!isDefault && !BannerOnce.shown) {
+            BannerOnce.shown = true
+            delay(700); bannerVisible = true
+            delay(5000); bannerVisible = false
+        }
+        if (isDefault) bannerVisible = false
+    }
+
     val homeEv = activity.homeEvents.intValue
     LaunchedEffect(homeEv) {
         if (homeEv > 0) {
@@ -347,7 +359,6 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            if (!isDefaultHome(activity, resumed)) DefaultBanner(activity)
             if (prefs.searchPos == SearchPos.Top && !onDashboard) SearchPill(prefs, Modifier.padding(16.dp, 8.dp)) { act(GestureAction.Claude) }
             HorizontalPager(state = pager, modifier = Modifier.weight(1f), userScrollEnabled = !drag.active) { page ->
                 Box(Modifier.fillMaxSize().pageEffect(pager, page, prefs.pageEffect)) {
@@ -485,9 +496,20 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             )
         }
 
+        androidx.compose.animation.AnimatedVisibility(
+            bannerVisible && overlay == Overlay.None,
+            modifier = Modifier.align(Alignment.TopCenter),
+            enter = slideInVertically(Motion.lively()) { -it * 2 } + fadeIn(tween(dur(200))),
+            exit = slideOutVertically(Motion.snappy()) { -it * 2 } + fadeOut(tween(dur(160)))
+        ) {
+            DefaultBanner(activity) { bannerVisible = false }
+        }
+
         DragLayer(drag, prefs, byKey)
     }
 }
+
+object BannerOnce { var shown = false }
 
 @Composable
 private fun HomePage(
@@ -521,6 +543,9 @@ private fun HomePage(
         ) {
             val cw = maxWidth / prefs.cols
             val ch = maxHeight / prefs.rows
+            // Το εικονίδιο μικραίνει ώστε να χωράει πάντα και η ετικέτα στο κελί
+            val labelH = if (prefs.showLabels) with(LocalDensity.current) { (prefs.labelSize * 1.4f * prefs.labelLines).sp.toDp() } + 5.dp else 0.dp
+            val fitIcon = minOf(prefs.iconSize.dp, ch - labelH - 10.dp, cw - 10.dp).coerceAtLeast(24.dp)
             items.forEach { (cell, item) ->
                 val (sx0, sy0) = Item.span(item)
                 val sx = sx0.coerceAtMost(prefs.cols); val sy = sy0.coerceAtMost(prefs.rows)
@@ -540,7 +565,7 @@ private fun HomePage(
                         // γυάλινο «δαχτυλίδι» φακέλου που ανοίγει
                         Box(
                             Modifier
-                                .size(prefs.iconSize.dp * 1.5f)
+                                .size(fitIcon * 1.5f)
                                 .graphicsLayer { scaleX = 0.6f + 0.4f * hoverS; scaleY = 0.6f + 0.4f * hoverS; alpha = hoverS }
                                 .smokedGlass(shapeFor(if (prefs.iconShape == IconShape.Original) IconShape.Circle else prefs.iconShape, prefs.iconCorner), alpha = 0.45f)
                                 .align(Alignment.Center)
@@ -551,12 +576,12 @@ private fun HomePage(
                         Item.isWidget(item) -> SystemWidget(Item.widgetId(item), widgets, prefs, { onItemLong(cell, item) })
                         Item.isCrator(item) -> CratorWidget(item, prefs, onClaude, onSettings, { onItemLong(cell, item) })
                         Item.isFolder(item) -> prefs.folders[Item.folderId(item)]?.let { f ->
-                            FolderCell(f, byKey, prefs, prefs.iconSize.dp, prefs.showLabels, { b -> onFolder(Item.folderId(item), b) }, { onItemLong(cell, item) },
+                            FolderCell(f, byKey, prefs, fitIcon, prefs.showLabels, { b -> onFolder(Item.folderId(item), b) }, { onItemLong(cell, item) },
                                 Modifier.graphicsLayer { val s = 1f - 0.1f * hoverS; scaleX = s; scaleY = s }, pop = pop)
                         }
                         else -> byKey[item]?.let { app ->
                             PopIn(pop) {
-                                AppCell(app, prefs, prefs.iconSize.dp, prefs.showLabels, { b -> onLaunch(app, b) }, { onItemLong(cell, item) },
+                                AppCell(app, prefs, fitIcon, prefs.showLabels, { b -> onLaunch(app, b) }, { onItemLong(cell, item) },
                                     Modifier.graphicsLayer { val s = 1f - 0.12f * hoverS; scaleX = s; scaleY = s })
                             }
                         }
@@ -809,20 +834,28 @@ private fun isDefaultHome(activity: MainActivity, resumed: Boolean): Boolean {
 }
 
 @Composable
-private fun DefaultBanner(activity: MainActivity) {
+private fun DefaultBanner(activity: MainActivity, onDismiss: () -> Unit) {
     Row(
         Modifier
+            .statusBarsPadding()
             .padding(16.dp, 8.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f))
-            .clickable { activity.requestHomeRole() }
-            .padding(14.dp),
+            .shadow(24.dp, RoundedCornerShape(24.dp), ambientColor = Color.Black, spotColor = Color.Black)
+            .smokedGlass(RoundedCornerShape(24.dp), alpha = 0.72f)
+            .clickable { onDismiss(); activity.requestHomeRole() }
+            .pointerInput(Unit) {
+                var t = 0f
+                detectVerticalDragGestures(onDragStart = { t = 0f }, onDragEnd = { if (t < -30) onDismiss() }) { c, dy -> t += dy; c.consume() }
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Rounded.AutoAwesome, null, tint = Color.Black)
-        Spacer(Modifier.width(10.dp))
-        Text("Όρισε το Crator ως αρχική οθόνη", color = Color.Black, fontWeight = FontWeight.SemiBold)
+        Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Κάνε το Crator αρχική οθόνη", color = Smoke.pearl, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text("Πάτα εδώ ή αργότερα από τις Ρυθμίσεις", color = Smoke.mist, fontSize = 12.sp)
+        }
     }
 }
 
