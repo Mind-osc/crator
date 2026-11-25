@@ -454,7 +454,7 @@ private fun AboutSection(activity: MainActivity, p: Prefs) {
         if (p.importJson(t)) activity.recreate() else Toast.makeText(activity, "Μη έγκυρο backup", Toast.LENGTH_SHORT).show()
     }) { Text("Επαναφορά από πρόχειρο") }
     Group("Έκδοση")
-    Text("Crator 0.1 · Mind-osc", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(4.dp))
+    Text("Crator 0.2 · Mind-osc", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(4.dp))
 }
 
 // ---------------- Επιλογή εικονιδίου από icon pack ----------------
