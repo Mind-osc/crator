@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dock
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Gesture
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Insights
@@ -92,6 +93,7 @@ private val SECTIONS = listOf(
     Section("dock", "Dock", "Στυλ, στοίχιση, φόντο, μέγεθος", Icons.Rounded.Dock),
     Section("effects", "Εφέ & κινήσεις", "Αλλαγή σελίδων, άνοιγμα εφαρμογών, blur", Icons.Rounded.Animation),
     Section("gestures", "Χειρονομίες", "Swipe πάνω/κάτω, διπλό tap", Icons.Rounded.Gesture),
+    Section("folders", "Φάκελοι, widgets & badges", "Στυλ φακέλων, στρογγύλεμα widgets, ειδοποιήσεις", Icons.Rounded.Folder),
     Section("drawer", "Συρτάρι εφαρμογών", "Στυλ, στήλες, κρυφές εφαρμογές", Icons.Rounded.Apps),
     Section("claude", "Claude", "API key, μοντέλο, οδηγίες, εμφάνιση", Icons.Rounded.AutoAwesome),
     Section("dash", "Ταμπλό συστήματος", "Αριστερή σελίδα, ρυθμός ανανέωσης", Icons.Rounded.Insights),
@@ -145,6 +147,7 @@ fun SettingsScreen(
                     "effects" -> EffectsSection(prefs)
                     "gestures" -> GesturesSection(prefs)
                     "drawer" -> DrawerSection(prefs, repo)
+                    "folders" -> FoldersSection(prefs)
                     "claude" -> ClaudeSection(prefs, chat)
                     "dash" -> DashSection(prefs)
                     "about" -> AboutSection(activity, prefs)
@@ -349,6 +352,32 @@ private fun GesturesSection(p: Prefs) {
     ChoicePref("Swipe κάτω", GestureAction.entries, p.swipeDown, { it.label }) { p.swipeDown = it }
     ChoicePref("Swipe πάνω", GestureAction.entries, p.swipeUp, { it.label }) { p.swipeUp = it }
     ChoicePref("Διπλό tap", GestureAction.entries, p.doubleTap, { it.label }) { p.doubleTap = it }
+}
+
+@Composable
+private fun FoldersSection(p: Prefs) {
+    val ctx = LocalContext.current
+    val resumed = rememberResumed()
+    val access = remember(resumed) { Badges.hasAccess(ctx) }
+    Group("Φάκελοι")
+    ChoicePref("Στυλ εικονιδίου", FolderStyle.entries, p.folderStyle, { it.label }) { p.folderStyle = it }
+    ColorPref("Χρώμα", p.folderColor) { p.folderColor = it }
+    SliderPref("Αδιαφάνεια", p.folderOpacity, 10..100, "%") { p.folderOpacity = it }
+    SliderPref("Στήλες στο άνοιγμα", p.folderCols, 3..5) { p.folderCols = it }
+    Text("Σύρε μια εφαρμογή πάνω σε άλλη για νέο φάκελο.", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp))
+    Group("Widgets")
+    SliderPref("Απόσταση", p.widgetPadding, 0..20, "dp") { p.widgetPadding = it }
+    SliderPref("Στρογγύλεμα", p.widgetCorner, 0..40, "dp") { p.widgetCorner = it }
+    Text("Πάτα παρατεταμένα σε κενό σημείο της αρχικής → Widgets.", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp))
+    Group("Badges ειδοποιήσεων")
+    if (!access) {
+        TextButton(onClick = { Badges.openAccessSettings(ctx) }) { Text("Δώσε πρόσβαση στις ειδοποιήσεις (απαιτείται)") }
+    }
+    SwitchPref("Badges", p.badges, if (access) "Ενεργή πρόσβαση" else "Χωρίς πρόσβαση ακόμα") { p.badges = it }
+    ChoicePref("Στυλ", BadgeStyle.entries, p.badgeStyle, { it.label }) { p.badgeStyle = it }
+    ColorPref("Χρώμα", p.badgeColor) { p.badgeColor = it }
+    Group("Διάταξη")
+    SwitchPref("Κλείδωμα διάταξης", p.lockLayout, "Αποτρέπει μετακινήσεις κατά λάθος") { p.lockLayout = it }
 }
 
 @Composable

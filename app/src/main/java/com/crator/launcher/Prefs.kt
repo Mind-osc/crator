@@ -56,6 +56,10 @@ enum class ClockStyle(val label: String) { Big("Μεγάλο"), Minimal("Μίν�
 
 enum class DrawerStyle(val label: String) { Grid("Πλέγμα"), List("Λίστα") }
 
+enum class FolderStyle(val label: String) { Grid("Πλέγμα 2×2"), Stack("Στοίβα"), Single("Πρώτο εικονίδιο") }
+
+enum class BadgeStyle(val label: String) { Count("Αριθμός"), Dot("Τελεία") }
+
 enum class PanelStyle(val label: String) { Glass("Γυαλί"), Aurora("Aurora"), Solid("Συμπαγές") }
 
 class Prefs(private val context: Context) {
@@ -168,6 +172,38 @@ class Prefs(private val context: Context) {
     var hidden by PrefState(loadList("hidden").toSet()) { saveList("hidden", it.toList()) }
     var labels by PrefState(loadMap("labels_map")) { saveMap("labels_map", it) }
     var iconOverrides by PrefState(loadMap("icon_over")) { saveMap("icon_over", it) }
+    var folders by PrefState(loadFolders()) { saveFolders(it) }
+    var lockLayout by bool("lock_layout", false)
+
+    // ---------- Φάκελοι ----------
+    var folderStyle by enm("folder_style", FolderStyle.Grid)
+    var folderColor by int("folder_color", 0xFF2A2D40.toInt())
+    var folderOpacity by int("folder_opacity", 75)
+    var folderCols by int("folder_cols", 4)
+
+    // ---------- Badges ----------
+    var badges by bool("badges", true)
+    var badgeStyle by enm("badge_style", BadgeStyle.Count)
+    var badgeColor by int("badge_color", 0xFFFF5A5F.toInt())
+
+    // ---------- Widgets ----------
+    var widgetPadding by int("widget_pad", 6)
+    var widgetCorner by int("widget_corner", 22)
+
+    private fun loadFolders(): Map<String, Folder> = runCatching {
+        val o = JSONObject(sp.getString("folders", "{}") ?: "{}")
+        o.keys().asSequence().associateWith { id ->
+            val f = o.getJSONObject(id)
+            val a = f.getJSONArray("a")
+            Folder(f.optString("n", "Φάκελος"), List(a.length()) { a.getString(it) }, f.optInt("c", 0))
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun saveFolders(v: Map<String, Folder>) {
+        val o = JSONObject()
+        v.forEach { (id, f) -> o.put(id, JSONObject().put("n", f.name).put("a", JSONArray(f.apps)).put("c", f.color)) }
+        sp.edit().putString("folders", o.toString()).apply()
+    }
 
     private fun loadList(k: String): List<String> = runCatching {
         val a = JSONArray(sp.getString(k, "[]")); List(a.length()) { a.getString(it) }
@@ -195,46 +231,6 @@ class Prefs(private val context: Context) {
         v.forEach { m -> a.put(JSONObject().apply { m.forEach { (c, k) -> put(c.toString(), k) } }) }
         sp.edit().putString("pages", a.toString()).apply()
     }
-
-    // ---------- Λειτουργίες διάταξης ----------
-    fun isOnHome(key: String) = pages.any { it.containsValue(key) }
-    fun isInDock(key: String) = key in dock
-
-    fun addToHome(key: String, preferPage: Int = 0): Boolean {
-        val ps = pages.toMutableList()
-        while (ps.size < homePages) ps.add(emptyMap())
-        val cells = cols * rows
-        val order = (preferPage.coerceIn(0, ps.size - 1) until ps.size) + (0 until preferPage.coerceIn(0, ps.size - 1))
-        for (p in order) {
-            val m = ps[p]
-            val free = (0 until cells).firstOrNull { it !in m }
-            if (free != null) {
-                ps[p] = m + (free to key); pages = ps; return true
-            }
-        }
-        return false
-    }
-
-    fun removeFromHome(key: String) {
-        pages = pages.map { m -> m.filterValues { it != key } }
-    }
-
-    fun moveTo(key: String, page: Int, cell: Int) {
-        val ps = pages.map { it.toMutableMap() }.toMutableList()
-        while (ps.size <= page) ps.add(mutableMapOf())
-        var from: Pair<Int, Int>? = null
-        ps.forEachIndexed { p, m -> m.entries.firstOrNull { it.value == key }?.let { from = p to it.key } }
-        val existing = ps[page][cell]
-        from?.let { (p, c) ->
-            ps[p].remove(c)
-            if (existing != null && existing != key) ps[p][c] = existing
-        }
-        ps[page][cell] = key
-        pages = ps
-    }
-
-    fun addToDock(key: String) { if (key !in dock) dock = dock + key }
-    fun removeFromDock(key: String) { dock = dock - key }
 
     // ---------- Backup ----------
     fun exportJson(): String {

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -169,7 +170,8 @@ fun AppCell(
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    var bounds = remember { arrayOfNulls<Rect>(1) }
+    val bounds = remember { arrayOfNulls<Rect>(1) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val target = if (!pressed) 1f else when (prefs.pressEffect) {
         PressEffect.Bounce -> 0.82f
         PressEffect.Shrink -> 0.9f
@@ -186,21 +188,26 @@ fun AppCell(
         modifier
             .combinedClickable(
                 interactionSource = source, indication = null,
-                onClick = { onClick(bounds[0]) }, onLongClick = onLongClick
+                onClick = { onClick(bounds[0]) },
+                onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); onLongClick() }
             )
             .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        AppIcon(
-            app, iconSize, prefs,
-            Modifier
-                .graphicsLayer { scaleX = sc; scaleY = sc; rotationZ = rot }
-                .onGloballyPositioned { c ->
+        Box(Modifier.graphicsLayer { scaleX = sc; scaleY = sc; rotationZ = rot }) {
+            AppIcon(
+                app, iconSize, prefs,
+                Modifier.onGloballyPositioned { c ->
                     val r = c.boundsInWindow()
                     bounds[0] = Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt())
                 }
-        )
+            )
+            BadgeView(
+                Badges.of(app.component.packageName), prefs, iconSize,
+                Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp)
+            )
+        }
         if (showLabel) {
             Spacer(Modifier.height(5.dp))
             Text(

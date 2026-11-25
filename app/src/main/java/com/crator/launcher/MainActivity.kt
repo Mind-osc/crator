@@ -22,6 +22,7 @@ import androidx.core.view.WindowCompat
 class MainActivity : ComponentActivity() {
     lateinit var prefs: Prefs
     lateinit var repo: AppRepository
+    lateinit var widgets: WidgetController
     val homeEvents = mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         prefs = Prefs(this)
         repo = AppRepository(this, prefs)
+        widgets = WidgetController(this, prefs)
         repo.onLoaded = {
             if (prefs.firstRun && repo.apps.value.isNotEmpty()) {
                 prefs.firstRun = false
@@ -60,6 +62,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.action == Intent.ACTION_MAIN) homeEvents.intValue++
+    }
+
+    override fun onStart() {
+        super.onStart()
+        widgets.startListening()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        widgets.stopListening()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!widgets.onResult(requestCode, resultCode)) {
+            @Suppress("DEPRECATION")
+            super.onActivityResult(requestCode, resultCode, data)
+        }
     }
 
     override fun onDestroy() {
