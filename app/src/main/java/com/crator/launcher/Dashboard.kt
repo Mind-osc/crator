@@ -84,6 +84,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.rounded.Add
@@ -521,7 +522,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                 if (editMode) {
                     Box(
                         Modifier.matchParentSize().pointerInput(id) {
-                            androidx.compose.foundation.gestures.detectDragGestures(
+                            detectDragGestures(
                                 onDragStart = { draggingId = id; dragOff = androidx.compose.ui.geometry.Offset.Zero },
                                 onDragEnd = { prefs.dashOrder = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero },
                                 onDragCancel = { prefs.dashOrder = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero }
