@@ -79,6 +79,20 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.combinedClickable
@@ -337,120 +351,256 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
     var editTitle by remember { mutableStateOf(false) }
     val d = LocalDensity.current
     val visibleShortcuts = shortcuts.filter { it.label !in prefs.dashHiddenShortcuts }
-    CompositionLocalProvider(
-        LocalDensity provides Density(d.density * prefs.dashScale / 100f, d.fontScale),
-        LocalDashStyle provides (Color(prefs.dashColor) to prefs.dashOpacity / 100f)
-    ) {
-    FitToHeight(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        // Κεφαλίδα: παρατεταμένο πάτημα για αλλαγή τίτλου / απόκρυψη υπότιτλου
-        Column(Modifier.padding(6.dp, 4.dp)) {
-            Text(
-                prefs.dashTitle.ifEmpty { " " }, color = Smoke.pearl, fontSize = 30.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp,
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { editTitle = true })
-            )
-            if (prefs.dashShowSub) Text(
-                "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}, σε λειτουργία ${fmtUptime(stats.uptime)}",
-                color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
-                modifier = Modifier.combinedClickable(onClick = {}, onLongClick = {
-                    prefs.dashShowSub = false
-                    android.widget.Toast.makeText(ctx, "Κρύφτηκε· επαναφορά από Ρυθμίσεις → Ταμπλό", android.widget.Toast.LENGTH_SHORT).show()
-                })
-            )
-        }
 
-        // Συντομεύσεις
-        if (prefs.dashShortcuts && visibleShortcuts.isNotEmpty()) Card {
-            visibleShortcuts.chunked(4).forEach { row ->
-                Row(Modifier.fillMaxWidth()) {
-                    row.forEach { s ->
-                        Column(
-                            Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { s.run() }.padding(vertical = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            val on = s.label == "Φακός" && torch
-                            Box(
-                                Modifier.size(38.dp).clip(CircleShape).background(if (on) accent else Color.White.copy(alpha = 0.09f)),
-                                contentAlignment = Alignment.Center
-                            ) { Icon(s.icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(19.dp)) }
-                            Spacer(Modifier.height(3.dp))
-                            Text(s.label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1)
+    // ----- Λειτουργία επεξεργασίας: ✕ για απόκρυψη, + για προσθήκη, σύρσιμο για σειρά -----
+    var editMode by remember { mutableStateOf(false) }
+    var addMenu by remember { mutableStateOf(false) }
+    BackHandler(enabled = editMode) { editMode = false; addMenu = false }
+    LaunchedEffect(active) { if (!active) { editMode = false; addMenu = false } }
+    val order = prefs.dashOrderFull()
+    var draggingId by remember { mutableStateOf<String?>(null) }
+    var live by remember { mutableStateOf(order) }
+    if (draggingId == null && live != order) live = order
+    val visible = live.filter { prefs.dashEnabled(it) && (it != "shortcuts" || visibleShortcuts.isNotEmpty()) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    val heights = remember { mutableStateMapOf<String, Int>() }
+    val hidden = DASH_UNITS.filter { !prefs.dashEnabled(it.first) }
+    val editScale by animateFloatAsState(if (editMode) 0.97f else 1f, Motion.lively(Motion.sheet), label = "edit")
+
+    @Composable
+    fun unit(id: String) {
+        when (id) {
+            "shortcuts" -> Card {
+                visibleShortcuts.chunked(4).forEach { row ->
+                    Row(Modifier.fillMaxWidth()) {
+                        row.forEach { s ->
+                            Column(
+                                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { s.run() }.padding(vertical = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                val on = s.label == "Φακός" && torch
+                                Box(
+                                    Modifier.size(38.dp).clip(CircleShape).background(if (on) accent else Color.White.copy(alpha = 0.09f)),
+                                    contentAlignment = Alignment.Center
+                                ) { Icon(s.icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(19.dp)) }
+                                Spacer(Modifier.height(3.dp))
+                                Text(s.label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1)
+                            }
+                        }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+            "cpu" -> Card {
+                Header(if (stats.cpuIsFreq) "CPU, συχνότητα" else "CPU, φόρτος", "%.0f%%".format(stats.cpuPct), accent)
+                val soc = if (Build.VERSION.SDK_INT >= 31) "${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}".trim() else Build.HARDWARE
+                Sub("$soc, ${stats.cores.size} πυρήνες")
+                LineChart(stats.cpuHist, 100f, accent, height = 52)
+                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+                    stats.cores.forEach { (cur, max) ->
+                        val f = if (max > 0) (cur.toFloat() / max).coerceIn(0.02f, 1f) else 0.02f
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(Modifier.fillMaxWidth().height((26 * f).dp).clip(RoundedCornerShape(3.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
+                            Text(if (cur > 0) "${cur / 1000}" else "off", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
                         }
                     }
                 }
             }
-        }
-
-        // CPU
-        if (prefs.dashCpu) Card {
-            Header(if (stats.cpuIsFreq) "CPU · συχνότητα" else "CPU · φόρτος", "%.0f%%".format(stats.cpuPct), accent)
-            val soc = if (Build.VERSION.SDK_INT >= 31) "${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}".trim() else Build.HARDWARE
-            Sub("$soc · ${stats.cores.size} πυρήνες")
-            LineChart(stats.cpuHist, 100f, accent, height = 52)
-            Spacer(Modifier.height(6.dp))
-            Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
-                stats.cores.forEach { (cur, max) ->
-                    val f = if (max > 0) (cur.toFloat() / max).coerceIn(0.02f, 1f) else 0.02f
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.fillMaxWidth().height((26 * f).dp).clip(RoundedCornerShape(3.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
-                        Text(if (cur > 0) "${cur / 1000}" else "off", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
+            "mem" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Card(Modifier.weight(1f)) {
+                    Header("RAM", "", accent)
+                    Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%", size = 70)
+                    Sub("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}" + if (stats.lowMem) ", χαμηλή!" else "")
+                    LineChart(stats.ramHist, 100f, Color(0xFF7DE3C2), height = 34)
+                }
+                Card(Modifier.weight(1f).clickable(enabled = !editMode) { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
+                    Header("Χώρος", "", accent)
+                    Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%", size = 70)
+                    Sub("${fmtBytes(stats.stUsed)} / ${fmtBytes(stats.stTotal)}")
+                    Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}, ${repo.apps.value.size} εφαρμογές")
+                }
+            }
+            "net" -> Card {
+                Header("Δίκτυο, ${stats.netType}", "↓ ${fmtRate(stats.rxRate)}", Color(0xFF6FC3FF))
+                Sub(
+                    "↑ ${fmtRate(stats.txRate)}" +
+                        (stats.rssi?.let { ", σήμα $it dBm" } ?: "") +
+                        (if (stats.bandwidth > 0) ", ζώνη ~${stats.bandwidth / 1000} Mbps" else "")
+                )
+                DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0), height = 46)
+                Sub("Από την εκκίνηση: ↓ ${fmtBytes(stats.rxTotal)}, ↑ ${fmtBytes(stats.txTotal)}")
+            }
+            "battery" -> Card(Modifier.clickable(enabled = !editMode) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
+                Header("Μπαταρία, ${stats.batStatus}", "${stats.batLevel}%", Color(0xFF9BE37D))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 64)
+                    Spacer(Modifier.width(14.dp))
+                    Column {
+                        Sub("%.1f °C, %.2f V, ${stats.batCurrent} mA".format(stats.batTemp, stats.batVolt / 1000f))
+                        Sub("Υγεία: ${stats.batHealth}" + if (stats.batCycles >= 0) ", ${stats.batCycles} κύκλοι" else "")
+                        LineChart(stats.batHist, null, Color(0xFF9BE37D), height = 30)
                     }
                 }
             }
-        }
-
-        // RAM + Χώρος
-        if (prefs.dashMem) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Card(Modifier.weight(1f)) {
-                Header("RAM", "", accent)
-                Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%", size = 70)
-                Sub("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}" + if (stats.lowMem) " · χαμηλή!" else "")
-                LineChart(stats.ramHist, 100f, Color(0xFF7DE3C2), height = 34)
-            }
-            Card(Modifier.weight(1f).clickable { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
-                Header("Χώρος", "", accent)
-                Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%", size = 70)
-                Sub("${fmtBytes(stats.stUsed)} / ${fmtBytes(stats.stTotal)}")
-                Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}, ${repo.apps.value.size} εφαρμογές")
+            "thermal" -> Card {
+                Header("Θερμική κατάσταση", stats.thermal, Color(0xFFFF8A65))
+                stats.headroom?.let { h ->
+                    Sub("Περιθώριο πριν το throttling")
+                    Bar((1f - h).coerceIn(0f, 1f), Color(0xFFFF8A65))
+                }
             }
         }
+    }
 
-        // Δίκτυο
-        if (prefs.dashNet) Card {
-            Header("Δίκτυο · ${stats.netType}", "↓ ${fmtRate(stats.rxRate)}", Color(0xFF6FC3FF))
-            Sub(
-                "↑ ${fmtRate(stats.txRate)}" +
-                    (stats.rssi?.let { " · σήμα $it dBm" } ?: "") +
-                    (if (stats.bandwidth > 0) " · ζώνη ~${stats.bandwidth / 1000} Mbps" else "")
-            )
-            DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0), height = 46)
-            Sub("Από την εκκίνηση: ↓ ${fmtBytes(stats.rxTotal)} · ↑ ${fmtBytes(stats.txTotal)}")
-        }
-
-        // Μπαταρία
-        if (prefs.dashBattery) Card(Modifier.clickable { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
-            Header("Μπαταρία · ${stats.batStatus}", "${stats.batLevel}%", Color(0xFF9BE37D))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 64)
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Sub("%.1f °C, %.2f V, ${stats.batCurrent} mA".format(stats.batTemp, stats.batVolt / 1000f))
-                    Sub("Υγεία: ${stats.batHealth}" + if (stats.batCycles >= 0) ", ${stats.batCycles} κύκλοι" else "")
-                    LineChart(stats.batHist, null, Color(0xFF9BE37D), height = 30)
+    CompositionLocalProvider(
+        LocalDensity provides Density(d.density * prefs.dashScale / 100f, d.fontScale),
+        LocalDashStyle provides (Color(prefs.dashColor) to prefs.dashOpacity / 100f)
+    ) {
+    Box(Modifier.fillMaxSize()) {
+    FitToHeight(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)) {
+        // Κεφαλίδα
+        Row(Modifier.fillMaxWidth().padding(6.dp, 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    prefs.dashTitle.ifEmpty { " " }, color = Smoke.pearl, fontSize = 30.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp,
+                    modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { editTitle = true })
+                )
+                if (prefs.dashShowSub) Text(
+                    "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}, σε λειτουργία ${fmtUptime(stats.uptime)}",
+                    color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                    modifier = Modifier.combinedClickable(onClick = {}, onLongClick = {
+                        prefs.dashShowSub = false
+                        android.widget.Toast.makeText(ctx, "Κρύφτηκε. Επαναφορά από Ρυθμίσεις → Ταμπλό", android.widget.Toast.LENGTH_SHORT).show()
+                    })
+                )
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                editMode,
+                enter = androidx.compose.animation.scaleIn(Motion.pop(Motion.sheet)) + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (hidden.isNotEmpty()) Box(
+                        Modifier.size(40.dp).smokedGlass(CircleShape, alpha = 0.6f, tint = accent).clickable { addMenu = !addMenu },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Rounded.Add, "Προσθήκη", tint = Smoke.pearl) }
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier.size(40.dp).smokedGlass(CircleShape, alpha = 0.6f).clickable { editMode = false; addMenu = false },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Rounded.Check, "Τέλος", tint = Smoke.pearl) }
                 }
             }
         }
 
-        // Θερμικά
-        if (prefs.dashThermal) Card {
-            Header("Θερμική κατάσταση", stats.thermal, Color(0xFFFF8A65))
-            stats.headroom?.let { h ->
-                Sub("Περιθώριο πριν το throttling")
-                Bar((1f - h).coerceIn(0f, 1f), Color(0xFFFF8A65))
+        visible.forEach { id -> androidx.compose.runtime.key(id) {
+            val isDrag = draggingId == id
+            val lift by animateFloatAsState(if (isDrag) 1.03f else 1f, Motion.pop(Motion.drag), label = "lift")
+            Box(
+                Modifier
+                    .onGloballyPositioned { heights[id] = it.size.height }
+                    .zIndex(if (isDrag) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (isDrag) dragY else 0f
+                        val sc = editScale * lift
+                        scaleX = sc; scaleY = sc
+                    }
+                    .then(if (!editMode) Modifier.longPress { editMode = true } else Modifier)
+            ) {
+                unit(id)
+                if (editMode) {
+                    // Πιάνει όλα τα αγγίγματα της κάρτας: σύρσιμο για αλλαγή σειράς
+                    Box(
+                        Modifier.matchParentSize().pointerInput(id) {
+                            val gap = 8.dp.toPx()
+                            fun neighbour(dir: Int): String? {
+                                val vis = live.filter { prefs.dashEnabled(it) }
+                                return vis.getOrNull(vis.indexOf(id) + dir)
+                            }
+                            detectVerticalDragGestures(
+                                onDragStart = { draggingId = id; dragY = 0f },
+                                onDragEnd = { prefs.dashOrder = live; draggingId = null; dragY = 0f },
+                                onDragCancel = { prefs.dashOrder = live; draggingId = null; dragY = 0f }
+                            ) { c, dy ->
+                                c.consume()
+                                dragY += dy
+                                val next = neighbour(1); val prev = neighbour(-1)
+                                if (dragY > 0 && next != null) {
+                                    val nh = (heights[next] ?: 0) + gap
+                                    if (dragY > nh / 2f) {
+                                        live = live.toMutableList().also { l -> val a = l.indexOf(id); val b = l.indexOf(next); l[a] = next; l[b] = id }
+                                        dragY -= nh
+                                    }
+                                } else if (dragY < 0 && prev != null) {
+                                    val ph = (heights[prev] ?: 0) + gap
+                                    if (-dragY > ph / 2f) {
+                                        live = live.toMutableList().also { l -> val a = l.indexOf(id); val b = l.indexOf(prev); l[a] = prev; l[b] = id }
+                                        dragY += ph
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    Box(
+                        Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).size(26.dp)
+                            .smokedGlass(CircleShape, alpha = 0.9f, tint = Smoke.danger)
+                            .clickable { prefs.setDashEnabled(id, false) },
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(14.dp)) }
+                }
+            }
+        } }
+    }
+
+    // Μενού «+»: όσες κάρτες έχουν αφαιρεθεί
+    androidx.compose.animation.AnimatedVisibility(
+        addMenu && editMode && hidden.isNotEmpty(),
+        modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp),
+        enter = androidx.compose.animation.scaleIn(Motion.lively(Motion.sheet), 0.6f, androidx.compose.ui.graphics.TransformOrigin(1f, 0f)) + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.scaleOut(Motion.snappy(Motion.sheet), 0.8f, androidx.compose.ui.graphics.TransformOrigin(1f, 0f)) + androidx.compose.animation.fadeOut()
+    ) {
+        Column(Modifier.widthIn(min = 180.dp).smokedGlass(RoundedCornerShape(22.dp), alpha = 0.8f).padding(6.dp)) {
+            hidden.forEach { (uid, name) ->
+                Row(
+                    Modifier.clip(RoundedCornerShape(16.dp)).clickable {
+                        prefs.setDashEnabled(uid, true)
+                        if (DASH_UNITS.count { !prefs.dashEnabled(it.first) } == 0) addMenu = false
+                    }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.Add, null, tint = accent, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(name, color = Smoke.pearl, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
             }
         }
     }
     }
+    }
     if (editTitle) RenameDialog(prefs.dashTitle, { editTitle = false }) { prefs.dashTitle = it }
+}
+
+val DASH_UNITS = listOf(
+    "shortcuts" to "Συντομεύσεις", "cpu" to "CPU", "mem" to "RAM & χώρος",
+    "net" to "Δίκτυο", "battery" to "Μπαταρία", "thermal" to "Θερμική κατάσταση"
+)
+
+fun Prefs.dashEnabled(id: String): Boolean = when (id) {
+    "shortcuts" -> dashShortcuts; "cpu" -> dashCpu; "mem" -> dashMem
+    "net" -> dashNet; "battery" -> dashBattery; "thermal" -> dashThermal; else -> false
+}
+
+fun Prefs.setDashEnabled(id: String, v: Boolean) {
+    when (id) {
+        "shortcuts" -> dashShortcuts = v; "cpu" -> dashCpu = v; "mem" -> dashMem = v
+        "net" -> dashNet = v; "battery" -> dashBattery = v; "thermal" -> dashThermal = v
+    }
+}
+
+fun Prefs.dashOrderFull(): List<String> {
+    val ids = DASH_UNITS.map { it.first }
+    return dashOrder.filter { it in ids }.distinct() + ids.filter { it !in dashOrder }
 }
 
 private val LocalDashStyle = androidx.compose.runtime.compositionLocalOf { Smoke.tint to 0.58f }
@@ -540,19 +690,24 @@ fun DualChart(a: List<Float>, b: List<Float>, ca: Color, cb: Color, height: Int 
     }
 }
 
-/** Όλο το ταμπλό χωράει στην οθόνη: αν δεν χωράει, μικραίνει ομοιόμορφα αντί για scroll */
+/** Όλο το ταμπλό χωράει στην οθόνη και πιάνει όλο το πλάτος: αν δεν χωράει, μικραίνει χωρίς να αφήνει κενά στα πλάγια */
 @Composable
 fun FitToHeight(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    androidx.compose.ui.layout.Layout(
-        content = { Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() } },
-        modifier = modifier
-    ) { ms, c ->
-        val p = ms[0].measure(c.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
-        val scale = if (c.hasBoundedHeight && p.height > c.maxHeight) c.maxHeight.toFloat() / p.height else 1f
-        layout(c.maxWidth, if (c.hasBoundedHeight) c.maxHeight else p.height) {
-            p.placeWithLayer(0, 0) {
-                scaleX = scale; scaleY = scale
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+    val col: @Composable () -> Unit = { Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) { content() } }
+    androidx.compose.ui.layout.SubcomposeLayout(modifier) { c ->
+        val inf = androidx.compose.ui.unit.Constraints.Infinity
+        val p1 = subcompose("a", col).first().measure(c.copy(minHeight = 0, maxHeight = inf))
+        if (!c.hasBoundedHeight || p1.height <= c.maxHeight) {
+            return@SubcomposeLayout layout(c.maxWidth, if (c.hasBoundedHeight) c.maxHeight else p1.height) { p1.place(0, 0) }
+        }
+        val s1 = c.maxHeight.toFloat() / p1.height
+        val w2 = (c.maxWidth / s1).toInt()
+        val p2 = subcompose("b", col).first().measure(androidx.compose.ui.unit.Constraints(minWidth = w2, maxWidth = w2, minHeight = 0, maxHeight = inf))
+        val sc = minOf(1f, c.maxHeight.toFloat() / p2.height)
+        layout(c.maxWidth, c.maxHeight) {
+            p2.placeWithLayer(0, 0) {
+                scaleX = sc; scaleY = sc
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
             }
         }
     }
