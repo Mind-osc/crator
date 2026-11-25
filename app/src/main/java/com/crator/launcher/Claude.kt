@@ -66,6 +66,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -105,6 +106,7 @@ class ChatState {
     var error by mutableStateOf<String?>(null)
     var draft by mutableStateOf("")
     var job: Job? = null
+    val shown = HashSet<ChatMsg>()
 
     fun clear() { job?.cancel(); messages.clear(); error = null; busy = false }
 }
@@ -242,9 +244,9 @@ fun ClaudePanel(
         }
     }
 
-    val shape = RoundedCornerShape(30.dp)
+    val shape = RoundedCornerShape(34.dp)
     val bg: Modifier = when (prefs.panelStyle) {
-        PanelStyle.Glass -> Modifier.background(Color(0xD912131C), shape).border(1.dp, Color.White.copy(alpha = 0.14f), shape)
+        PanelStyle.Glass -> Modifier.smokedGlass(shape, alpha = 0.7f)
         PanelStyle.Solid -> Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh, shape)
         PanelStyle.Aurora -> {
             val t = rememberInfiniteTransition(label = "aurora")
@@ -267,7 +269,7 @@ fun ClaudePanel(
                 .imePadding()
                 .padding(10.dp)
                 .fillMaxWidth()
-                .fillMaxSize(fraction = 1f)
+                .shadow(40.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
                 .then(bg)
                 .clip(shape)
                 .pointerInput(Unit) { detectTapGestures { } }
@@ -280,7 +282,7 @@ fun ClaudePanel(
                 }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Claude", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                    Text("Claude", color = Smoke.pearl, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, letterSpacing = (-0.2).sp)
                     Text(prefs.claudeModel, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
                 }
                 Icon(Icons.Rounded.EditNote, "Νέα συζήτηση", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.clip(CircleShape).clickable { chat.clear() }.padding(8.dp))
@@ -307,7 +309,7 @@ fun ClaudePanel(
                     if (chat.messages.isEmpty()) {
                         item {
                             Column(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Τι θέλεις να κάνουμε;", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
+                                Text("Τι θέλεις να κάνουμε;", color = Smoke.pearl, fontSize = 26.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-0.6).sp)
                                 Spacer(Modifier.height(16.dp))
                                 listOf("Άνοιξε τις Ρυθμίσεις", "Γράψε μου ένα σύντομο μήνυμα για…", "Εξήγησέ μου απλά…", "Τι να μαγειρέψω απόψε;").forEach { s ->
                                     Box(
@@ -321,11 +323,24 @@ fun ClaudePanel(
                     }
                     itemsIndexed(chat.messages) { i, m ->
                         val mine = m.role == "user"
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+                        val ap = remember(m) { androidx.compose.animation.core.Animatable(if (m in chat.shown) 1f else 0f) }
+                        LaunchedEffect(m) { chat.shown.add(m); ap.animateTo(1f, Motion.lively()) }
+                        Row(
+                            Modifier.fillMaxWidth().graphicsLayer {
+                                alpha = ap.value.coerceIn(0f, 1f)
+                                translationY = (1f - ap.value) * 22.dp.toPx()
+                                val s = 0.94f + 0.06f * ap.value; scaleX = s; scaleY = s
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(if (mine) 1f else 0f, 1f)
+                            },
+                            horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
+                        ) {
                             Box(
                                 Modifier.widthIn(max = 300.dp)
                                     .clip(RoundedCornerShape(20.dp, 20.dp, if (mine) 6.dp else 20.dp, if (mine) 20.dp else 6.dp))
-                                    .background(if (mine) accent.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.08f))
+                                    .background(
+                                        if (mine) Brush.linearGradient(listOf(accent, accent.copy(alpha = 0.75f)))
+                                        else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.05f)))
+                                    )
                                     .padding(14.dp, 10.dp)
                             ) {
                                 if (!mine && m.text.isEmpty() && chat.busy && i == chat.messages.lastIndex) TypingDots()
@@ -356,14 +371,14 @@ fun ClaudePanel(
 
             // Πεδίο εισαγωγής
             Row(
-                Modifier.padding(10.dp).fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(Color.White.copy(alpha = 0.09f)).padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                Modifier.padding(10.dp).fillMaxWidth().smokedGlass(RoundedCornerShape(26.dp), alpha = 0.35f, tint = Color.Black).padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.weight(1f).padding(vertical = 8.dp)) {
                     if (chat.draft.isEmpty()) Text("Ρώτα οτιδήποτε ή γράψε όνομα εφαρμογής", color = Color.White.copy(alpha = 0.45f), fontSize = 15.sp)
                     BasicTextField(
                         chat.draft, { chat.draft = it },
-                        textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                        textStyle = TextStyle(color = Color.White, fontSize = 15.sp, fontFamily = Manrope),
                         cursorBrush = SolidColor(accent),
                         maxLines = 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),

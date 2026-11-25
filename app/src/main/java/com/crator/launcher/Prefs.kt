@@ -39,7 +39,7 @@ enum class OpenAnim(val label: String) {
 enum class PressEffect(val label: String) { Bounce("Ελατήριο"), Shrink("Σμίκρυνση"), Tilt("Κλίση"), None("Χωρίς") }
 
 enum class DockStyle(val label: String) {
-    Floating("Αιωρούμενο"), Glass("Γυαλί"), Island("Νησί"), Classic("Κλασικό"),
+    Smoke("Φιμέ γυαλί"), Floating("Αιωρούμενο"), Glass("Γυαλί"), Island("Νησί"), Classic("Κλασικό"),
     Minimal("Χωρίς φόντο"), Carousel("Καρουζέλ"), Arc("Τόξο")
 }
 
@@ -122,7 +122,7 @@ class Prefs(private val context: Context) {
     var pressEffect by enm("press_effect", PressEffect.Bounce)
 
     // ---------- Dock ----------
-    var dockStyle by enm("dock_style", DockStyle.Floating)
+    var dockStyle by enm("dock_style", DockStyle.Smoke)
     var dockAlign by enm("dock_align", DockAlign.Spread)
     var dockCount by int("dock_count", 5)
     var dockIconSize by int("dock_icon_size", 54)

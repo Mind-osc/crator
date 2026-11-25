@@ -274,15 +274,15 @@ fun CratorWidget(
     val ctx = LocalContext.current
     val shape = RoundedCornerShape(prefs.widgetCorner.dp)
     val accent = MaterialTheme.colorScheme.primary
-    val bg = Color(prefs.dockColor).copy(alpha = (prefs.dockOpacity / 100f + 0.1f).coerceAtMost(1f))
     val card = modifier.padding(prefs.widgetPadding.dp).fillMaxSize().clip(shape)
+    val glass = Modifier.smokedGlass(shape, alpha = (prefs.dockOpacity / 100f + 0.1f).coerceAtMost(1f), tint = Color(prefs.dockColor))
     val press = Modifier.longPress(onLongPress)
     when (Item.cratorType(item)) {
         "clock" -> {
             val now by produceState(Date()) { while (true) { value = Date(); delay(60_000L - System.currentTimeMillis() % 60_000L + 50) } }
             val el = Locale("el", "GR")
             Column(card.then(press), verticalArrangement = Arrangement.Center) {
-                Text(SimpleDateFormat("HH:mm", el).format(now), color = Color.White, fontSize = 64.sp, fontWeight = FontWeight.Thin)
+                Text(SimpleDateFormat("HH:mm", el).format(now), color = Smoke.pearl, fontSize = 72.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-2.5).sp)
                 Text(SimpleDateFormat("EEEE, d MMMM", el).format(now).replaceFirstChar { it.uppercase() }, color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp)
             }
         }
@@ -304,7 +304,7 @@ fun CratorWidget(
                     delay(5000)
                 }
             }
-            Row(card.background(bg).then(press).clickable { onSettings("__dash") }.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Row(card.then(glass).then(press).clickable { onSettings("__dash") }.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 MiniStat("RAM", s.first, Color(0xFF7DE3C2))
                 MiniStat("Χώρος", s.second, Color(0xFFFFB86B))
                 MiniStat("Μπαταρία", s.third / 100f, Color(0xFF9BE37D))
@@ -318,7 +318,7 @@ fun CratorWidget(
                 Triple("Αρχεία", Icons.Rounded.Folder) { Actions.openFiles(ctx) },
                 Triple("Ρυθμίσεις", Icons.Rounded.Settings) { Actions.settings(ctx, Settings.ACTION_SETTINGS) }
             )
-            Row(card.background(bg).then(press), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Row(card.then(glass).then(press), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 items.forEach { (l, ic, fn) -> RoundTile(l, ic, accent, fn) }
             }
         }
@@ -330,7 +330,7 @@ fun CratorWidget(
                 Triple("Claude", Icons.Rounded.AutoAwesome, "claude"),
                 Triple("Όλες", Icons.Rounded.Tune, null)
             )
-            Row(card.background(bg).then(press), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Row(card.then(glass).then(press), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 items.forEach { (l, ic, sec) -> RoundTile(l, ic, accent) { onSettings(sec) } }
             }
         }
@@ -340,7 +340,7 @@ fun CratorWidget(
 @Composable
 private fun RoundTile(label: String, icon: ImageVector, accent: Color, onClick: () -> Unit) {
     Column(Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(38.dp).clip(CircleShape).background(accent.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(40.dp).smokedGlass(CircleShape, alpha = 0.3f, tint = accent), contentAlignment = Alignment.Center) {
             Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
         }
         Text(label, color = Color.White.copy(alpha = 0.85f), fontSize = 10.sp, maxLines = 1)

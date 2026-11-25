@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -111,20 +112,21 @@ fun SettingsScreen(
     onClose: () -> Unit
 ) {
     val sec = SECTIONS.firstOrNull { it.id == section }
-    Column(Modifier.fillMaxSize().background(Color(0xFA0C0D14)).statusBarsPadding().navigationBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(Smoke.tint.copy(alpha = 0.86f)).statusBarsPadding().navigationBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(8.dp, 8.dp, 8.dp, 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 if (sec == null) Icons.Rounded.Close else Icons.AutoMirrored.Rounded.ArrowBack, null, tint = Color.White,
                 modifier = Modifier.clip(CircleShape).clickable { if (sec == null) onClose() else onSection(null) }.padding(12.dp)
             )
-            Text(sec?.title ?: "Ρυθμίσεις Crator", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+            Text(sec?.title ?: "Ρυθμίσεις", color = Smoke.pearl, fontSize = 28.sp, fontWeight = FontWeight.Light, letterSpacing = (-0.6).sp)
         }
         if (sec == null) {
             LazyColumn(contentPadding = PaddingValues(12.dp)) {
-                items(SECTIONS) { s ->
+                itemsIndexed(SECTIONS) { i, s ->
+                    StaggerIn(i) {
                     Row(
-                        Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.05f)).clickable { onSection(s.id) }.padding(16.dp),
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp).smokedGlass(RoundedCornerShape(22.dp), alpha = 0.45f, tint = Smoke.graphite)
+                            .clickable { onSection(s.id) }.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
@@ -135,6 +137,7 @@ fun SettingsScreen(
                             Text(s.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                             Text(s.sub, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
                         }
+                    }
                     }
                 }
             }
@@ -162,8 +165,8 @@ fun SettingsScreen(
 
 @Composable
 fun Group(title: String) {
-    Text(title.uppercase(), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(top = 18.dp, bottom = 6.dp, start = 4.dp))
+    Text(title, color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 22.dp, bottom = 6.dp, start = 4.dp))
 }
 
 @Composable
@@ -454,7 +457,7 @@ private fun AboutSection(activity: MainActivity, p: Prefs) {
         if (p.importJson(t)) activity.recreate() else Toast.makeText(activity, "Μη έγκυρο backup", Toast.LENGTH_SHORT).show()
     }) { Text("Επαναφορά από πρόχειρο") }
     Group("Έκδοση")
-    Text("Crator 0.2 · Mind-osc", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(4.dp))
+    Text("Crator 0.3", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(4.dp))
 }
 
 // ---------------- Επιλογή εικονιδίου από icon pack ----------------

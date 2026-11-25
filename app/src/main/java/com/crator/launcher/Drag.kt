@@ -1,6 +1,12 @@
 package com.crator.launcher
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +76,9 @@ class DragState {
     private var startPos = Offset.Zero
     private var onTap: (() -> Unit)? = null
     var currentPage = 0
+    var lastSource: DragSource? = null
+    /** Η πηγή που πρέπει να μένει κρυφή (όσο σέρνεις ή προσγειώνεται) */
+    val hiddenSource: DragSource? get() = if (active && moved) source else if (settle != null) lastSource else null
     var onDrop: () -> Unit = {}
     var dockSize = 0
     val grids = HashMap<Int, GridGeom>()
@@ -78,6 +87,30 @@ class DragState {
     val zones = HashMap<String, Rect>()
 
     val active get() = item != null
+
+    /** Το στοιχείο που μόλις τοποθετήθηκε (για το «σκάσιμο») */
+    var recent by mutableStateOf<String?>(null)
+
+    class Settle(val item: String, val from: Offset, val to: Offset, val swallow: Boolean)
+    var settle by mutableStateOf<Settle?>(null)
+    val origin get() = startPos
+
+    /** Κέντρο προορισμού για να «πετάξει» εκεί το εικονίδιο */
+    fun destination(t: DropTarget?, item: String): Offset {
+        return when (t) {
+            null -> startPos
+            is DropTarget.Zone -> zones[t.id]?.center ?: pos
+            is DropTarget.DockAt -> (dockSlots[t.index] ?: dockSlots[t.index - 1])?.center ?: dockRect?.center ?: pos
+            is DropTarget.Cell -> {
+                val g = grids[t.page] ?: return pos
+                val (sx0, sy0) = Item.span(item)
+                val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)
+                val c = (t.cell % g.cols).coerceAtMost(g.cols - sx); val r = (t.cell / g.cols).coerceAtMost(g.rows - sy)
+                val cw = g.rect.width / g.cols; val ch = g.rect.height / g.rows
+                Offset(g.rect.left + (c + sx / 2f) * cw, g.rect.top + (r + sy / 2f) * ch)
+            }
+        }
+    }
 
     fun start(item: String, source: DragSource, onTapInstead: () -> Unit) {
         this.item = item; this.source = source
@@ -92,6 +125,7 @@ class DragState {
 
     fun end(): (() -> Unit)? {
         val t = if (!moved) onTap else null
+        lastSource = source
         item = null; source = null; moved = false; onTap = null; zones.clear()
         return t
     }
@@ -134,39 +168,81 @@ fun Modifier.dragObserver(drag: DragState): Modifier = this.then(
 
 @Composable
 fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
-    val item = drag.item ?: return
+    val settle = drag.settle
+    val item = drag.item ?: settle?.item ?: return
     val density = LocalDensity.current
-    val target = drag.target()
+    val target = if (drag.active) drag.target() else null
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+    // απαλό «κλικ» όταν αλλάζει ο στόχος
+    androidx.compose.runtime.LaunchedEffect(target) {
+        if (target != null && drag.moved) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+    }
+
+    // ανύψωση + κλίση ανάλογα με την ταχύτητα (σαν να το κρατάς στο χέρι)
+    val lift = androidx.compose.runtime.remember { Animatable(1f) }
+    val tilt = androidx.compose.runtime.remember { Animatable(0f) }
+    androidx.compose.runtime.LaunchedEffect(drag.active) {
+        if (drag.active) {
+            launch { lift.animateTo(1.14f, Motion.pop()) }
+            var last = drag.pos
+            while (isActive && drag.active) {
+                withFrameNanos { }
+                val dx = drag.pos.x - last.x
+                last = drag.pos
+                val t = (dx * 0.8f).coerceIn(-14f, 14f)
+                tilt.snapTo(tilt.value + (t - tilt.value) * 0.16f)
+            }
+        }
+    }
+    // προσγείωση: πετάει στη θέση του και σβήνει
+    val fly = androidx.compose.runtime.remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val flyP = androidx.compose.runtime.remember { Animatable(0f) }
+    androidx.compose.runtime.LaunchedEffect(settle) {
+        if (settle != null) {
+            fly.snapTo(settle.from); flyP.snapTo(0f)
+            launch { tilt.animateTo(0f, Motion.snappy()) }
+            launch { lift.animateTo(if (settle.swallow) 0.2f else 1f, Motion.lively()) }
+            launch { flyP.animateTo(1f, Motion.snappy()) }
+            fly.animateTo(settle.to, Motion.lively())
+            drag.settle = null
+        }
+    }
+    val pos = if (settle != null) fly.value else drag.pos
+    val ghostAlpha = if (settle != null) (1f - flyP.value * flyP.value).coerceIn(0f, 1f) else 1f
+
     Box(Modifier.fillMaxSize()) {
-        // Επισήμανση θέσης
-        if (target is DropTarget.Cell) {
+        // Επισήμανση θέσης (απαλό γυάλινο «κελί»)
+        if (target is DropTarget.Cell && drag.moved) {
             drag.grids[target.page]?.let { g ->
                 val (sx0, sy0) = Item.span(item)
                 val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)
-                var r = target.cell / g.cols; var c = target.cell % g.cols
-                c = c.coerceAtMost(g.cols - sx); r = r.coerceAtMost(g.rows - sy)
+                val c = (target.cell % g.cols).coerceAtMost(g.cols - sx); val r = (target.cell / g.cols).coerceAtMost(g.rows - sy)
                 val cw = g.rect.width / g.cols; val ch = g.rect.height / g.rows
+                val ox by animateFloatAsState(g.rect.left + c * cw, Motion.lively(), label = "hx")
+                val oy by animateFloatAsState(g.rect.top + r * ch, Motion.lively(), label = "hy")
                 with(density) {
                     Box(
                         Modifier
-                            .offset { IntOffset((g.rect.left + c * cw).roundToInt(), (g.rect.top + r * ch).roundToInt()) }
+                            .offset { IntOffset(ox.roundToInt(), oy.roundToInt()) }
                             .size((cw * sx).toDp(), (ch * sy).toDp())
-                            .padding(4.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.White.copy(alpha = 0.12f))
-                            .border(1.5.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(20.dp))
+                            .padding(6.dp)
+                            .smokedGlass(RoundedCornerShape(24.dp), alpha = 0.22f)
                     )
                 }
             }
         }
-        // Ζώνες πάνω
-        if (drag.moved) {
+        // Ζώνες
+        androidx.compose.animation.AnimatedVisibility(
+            drag.active && drag.moved,
+            enter = androidx.compose.animation.slideInVertically(Motion.lively()) { -it } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically(Motion.snappy()) { -it } + androidx.compose.animation.fadeOut()
+        ) {
             Row(
                 Modifier.statusBarsPadding().padding(12.dp).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val src = drag.source
-                if (src != DragSource.Drawer) Zone("remove", "Αφαίρεση", Icons.Rounded.Close, drag, target, Modifier.weight(1f))
+                if (drag.source != DragSource.Drawer) Zone("remove", "Αφαίρεση", Icons.Rounded.Close, drag, target, Modifier.weight(1f))
                 if (Item.isApp(item)) {
                     Zone("info", "Πληροφορίες", Icons.Rounded.Info, drag, target, Modifier.weight(1f))
                     Zone("uninstall", "Απεγκατάσταση", Icons.Rounded.Delete, drag, target, Modifier.weight(1f))
@@ -174,22 +250,27 @@ fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
             }
         }
         // Το στοιχείο που σέρνεις
-        val size = prefs.iconSize.dp * 1.12f
+        val size = prefs.iconSize.dp
         val sizePx = with(density) { size.toPx() }
-        val sc by animateFloatAsState(if (drag.moved) 1f else 1.08f, label = "dragScale")
         Box(
             Modifier
-                .offset { IntOffset((drag.pos.x - sizePx / 2).roundToInt(), (drag.pos.y - sizePx * 0.8f).roundToInt()) }
+                .offset { IntOffset((pos.x - sizePx / 2).roundToInt(), (pos.y - sizePx * 0.75f).roundToInt()) }
                 .size(size)
-                .graphicsLayer { scaleX = sc; scaleY = sc }
-                .shadow(14.dp, RoundedCornerShape(30)),
+                .graphicsLayer {
+                    scaleX = lift.value; scaleY = lift.value
+                    rotationZ = tilt.value
+                    alpha = ghostAlpha
+                    shadowElevation = 18.dp.toPx() * (lift.value - 0.9f).coerceIn(0f, 1f) * 4f
+                    shape = RoundedCornerShape(30)
+                    clip = false
+                },
             contentAlignment = Alignment.Center
         ) {
             when {
                 Item.isApp(item) -> byKey[item]?.let { AppIcon(it, size, prefs) }
                 Item.isFolder(item) -> prefs.folders[Item.folderId(item)]?.let { FolderIcon(it, byKey, prefs, size) }
-                else -> Box(Modifier.fillMaxSize().clip(RoundedCornerShape(30)).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Widgets, null, tint = Color.Black)
+                else -> Box(Modifier.fillMaxSize().smokedGlass(RoundedCornerShape(30), alpha = 0.7f), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Widgets, null, tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -199,17 +280,18 @@ fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
 @Composable
 private fun Zone(id: String, label: String, icon: ImageVector, drag: DragState, target: DropTarget?, modifier: Modifier) {
     val hot = target == DropTarget.Zone(id)
+    val s by animateFloatAsState(if (hot) 1.06f else 1f, Motion.pop(), label = "zone")
     Row(
         modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (hot) Color(0xFFFF5A5F) else Color.Black.copy(alpha = 0.55f))
+            .graphicsLayer { scaleX = s; scaleY = s }
+            .smokedGlass(RoundedCornerShape(20.dp), alpha = if (hot) 0.8f else 0.6f, tint = if (hot) Smoke.danger else Smoke.tint)
             .onGloballyPositioned { drag.zones[id] = it.boundsInWindow() }
             .padding(vertical = 14.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = Color.White, modifier = Modifier.size(18.dp))
+        Icon(icon, null, tint = Smoke.pearl, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White, fontSize = 13.sp)
+        Text(label, color = Smoke.pearl, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }

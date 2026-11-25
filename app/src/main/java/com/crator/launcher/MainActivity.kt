@@ -48,8 +48,10 @@ class MainActivity : ComponentActivity() {
             val ctx = LocalContext.current
             val scheme = if (prefs.dynamicColors) dynamicDarkColorScheme(ctx)
             else darkColorScheme(primary = Color(prefs.accent), secondary = Color(prefs.accent))
-            MaterialTheme(colorScheme = scheme) {
-                CompositionLocalProvider(LocalContentColor provides Color.White) {
+            MaterialTheme(colorScheme = scheme, typography = cratorTypography()) {
+                val sysScale = remember { Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }
+                Motion.speed = if (sysScale == 0f) 8f else (prefs.animSpeed / 100f) / sysScale.coerceAtLeast(0.25f)
+                CompositionLocalProvider(LocalContentColor provides Smoke.pearl) {
                     // Επαναφόρτωση εικονιδίων όταν αλλάζει το pack
                     val first = remember { booleanArrayOf(true) }
                     LaunchedEffect(prefs.iconPack) { if (first[0]) first[0] = false else repo.load() }

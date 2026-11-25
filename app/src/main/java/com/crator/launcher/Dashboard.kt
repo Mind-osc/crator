@@ -333,7 +333,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
     ) {
         // Κεφαλίδα
         Column(Modifier.padding(6.dp, 8.dp)) {
-            Text("Σύστημα", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Light)
+            Text("Σύστημα", color = Smoke.pearl, fontSize = 34.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp)
             Text(
                 "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL} · Android ${Build.VERSION.RELEASE} · σε λειτουργία ${fmtUptime(stats.uptime)}",
                 color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp
@@ -444,10 +444,8 @@ private fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit)
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xCC12131C))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-            .padding(16.dp)
+            .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.58f)
+            .padding(18.dp)
     ) { content() }
 }
 

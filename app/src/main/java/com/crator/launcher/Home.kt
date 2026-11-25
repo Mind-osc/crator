@@ -119,6 +119,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     var homeMenu by remember { mutableStateOf(false) }
     var pickerPkg by remember { mutableStateOf<String?>(null) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
+    var folderOrigin by remember { mutableStateOf(TransformOrigin.Center) }
     val apps = repo.apps.value
     val byKey = remember(apps) { apps.associateBy { it.key } }
     val dashOffset = if (prefs.dashboardEnabled) 1 else 0
@@ -203,8 +204,11 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         val item = drag.item ?: return
         val src = drag.source
         val target = if (drag.moved) drag.target() else null
+        val from = drag.pos
+        val dest = drag.destination(target, item)
         val tap = drag.end()
         if (tap != null) { tap(); return }
+        drag.settle = DragState.Settle(item, from, dest, target is DropTarget.Zone)
         when (target) {
             null -> {}
             is DropTarget.Zone -> when (target.id) {
@@ -227,6 +231,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                     removeFromSource(src, item)
                     prefs.insertDock(target.index, item)
                 }
+                drag.recent = item
             }
             is DropTarget.Cell -> {
                 val (sx, sy) = Item.span(item)
@@ -242,15 +247,18 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                     prefs.fits(target.page, anchor, sx, sy, exclude) -> {
                         removeFromSource(src, item)
                         prefs.setHome(target.page, anchor, item)
+                        drag.recent = item
                     }
                     Item.isApp(item) && hitItem != null && Item.isFolder(hitItem) -> {
                         removeFromSource(src, item)
                         prefs.addToFolder(Item.folderId(hitItem), item)
+                        drag.recent = hitItem
                     }
                     Item.isApp(item) && hitItem != null && Item.isApp(hitItem) && hitItem != item -> {
                         removeFromSource(src, item)
                         val f = prefs.createFolder(hitItem, item)
                         prefs.setHome(target.page, hit, f)
+                        drag.recent = f
                     }
                     else -> Toast.makeText(ctx, "Δεν χωράει εδώ", Toast.LENGTH_SHORT).show()
                 }
@@ -258,6 +266,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
     }
     drag.onDrop = ::handleDrop
+    LaunchedEffect(drag.recent) { if (drag.recent != null) { delay(1200); drag.recent = null } }
 
     // Όταν αρχίσεις να σέρνεις από συρτάρι/φάκελο, κλείνουν για να φανεί η αρχική
     LaunchedEffect(drag.moved) {
@@ -285,7 +294,20 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
     }
 
-    val blur by animateDpAsState(if (overlay != Overlay.None) prefs.blurStrength.dp else 0.dp, tween(dur(300)), label = "blur")
+    val blurTarget = when {
+        overlay != Overlay.None -> prefs.blurStrength.dp
+        folderOpen != null || anySheet -> (prefs.blurStrength * 0.6f).dp
+        else -> 0.dp
+    }
+    val blur by animateDpAsState(blurTarget, Motion.soft(), label = "blur")
+    val recede by androidx.compose.animation.core.animateFloatAsState(
+        when {
+            homeMenu || overlay == Overlay.Widgets -> 0.9f
+            folderOpen != null || anySheet || overlay == Overlay.Drawer || overlay == Overlay.Claude -> 0.95f
+            drag.active && drag.moved -> 0.97f
+            else -> 1f
+        }, Motion.lively(), label = "recede"
+    )
     val onDashboard = prefs.dashboardEnabled && pager.currentPage == 0
     val swipeDownA by rememberUpdatedState { act(prefs.swipeDown) }
     val swipeUpA by rememberUpdatedState { act(prefs.swipeUp) }
@@ -303,6 +325,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         Column(
             Modifier
                 .fillMaxSize()
+                .graphicsLayer { scaleX = recede; scaleY = recede }
                 .blur(blur)
                 .pointerInput(Unit) {
                     var total = 0f
@@ -346,7 +369,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                                     else -> byKey[item]?.let { app -> beginDrag(item, DragSource.Home(idx, cell)) { sheetApp = app } }
                                 }
                             },
-                            onFolder = { folderOpen = it },
+                            onFolder = { id, b -> b?.let { folderOrigin = TransformOrigin(it.exactCenterX() / rootSize.width.coerceAtLeast(1), it.exactCenterY() / rootSize.height.coerceAtLeast(1)) }; folderOpen = id },
                             onClaude = { act(GestureAction.Claude) },
                             onSettings = ::openSettings
                         )
@@ -358,7 +381,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             Dock(
                 prefs, byKey, drag,
                 onLaunch = ::openApp,
-                onFolder = { folderOpen = it },
+                onFolder = { id, b -> b?.let { folderOrigin = TransformOrigin(it.exactCenterX() / rootSize.width.coerceAtLeast(1), it.exactCenterY() / rootSize.height.coerceAtLeast(1)) }; folderOpen = id },
                 onItemLong = { i, item ->
                     if (Item.isFolder(item)) beginDrag(item, DragSource.Dock(i)) { folderSheet = Item.folderId(item) }
                     else byKey[item]?.let { app -> beginDrag(item, DragSource.Dock(i)) { sheetApp = app } }
@@ -367,12 +390,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             )
         }
 
-        if (overlay != Overlay.None) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)))
+        androidx.compose.animation.AnimatedVisibility(overlay != Overlay.None, enter = fadeIn(tween(dur(220))), exit = fadeOut(tween(dur(220)))) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.22f)))
+        }
 
         AnimatedVisibility(
             overlay == Overlay.Drawer,
-            enter = slideInVertically(tween(dur(380))) { it / 2 } + fadeIn(tween(dur(260))),
-            exit = slideOutVertically(tween(dur(280))) { it / 2 } + fadeOut(tween(dur(200)))
+            enter = slideInVertically(Motion.lively()) { it / 3 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(), 0.96f, TransformOrigin(0.5f, 1f)),
+            exit = slideOutVertically(Motion.snappy()) { it / 3 } + fadeOut(tween(dur(180)))
         ) {
             AppDrawer(
                 apps, prefs,
@@ -384,8 +409,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
         AnimatedVisibility(
             folderOpen != null,
-            enter = fadeIn(tween(dur(200))) + scaleIn(tween(dur(260)), 0.85f),
-            exit = fadeOut(tween(dur(180))) + scaleOut(tween(dur(200)), 0.9f)
+            enter = fadeIn(tween(dur(160))) + scaleIn(Motion.lively(), 0.2f, folderOrigin),
+            exit = fadeOut(tween(dur(170))) + scaleOut(Motion.snappy(), 0.2f, folderOrigin)
         ) {
             val last = remember { mutableStateOf("") }
             folderOpen?.let { last.value = it }
@@ -398,8 +423,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
         AnimatedVisibility(
             overlay == Overlay.Claude,
-            enter = slideInVertically(tween(dur(420))) { -it / 3 } + fadeIn(tween(dur(260))) + scaleIn(tween(dur(420)), 0.92f, TransformOrigin(0.5f, 0f)),
-            exit = slideOutVertically(tween(dur(260))) { -it / 3 } + fadeOut(tween(dur(200))) + scaleOut(tween(dur(260)), 0.94f, TransformOrigin(0.5f, 0f))
+            enter = slideInVertically(Motion.lively()) { -it / 4 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(), 0.88f, TransformOrigin(0.5f, 0f)),
+            exit = slideOutVertically(Motion.snappy()) { -it / 4 } + fadeOut(tween(dur(180))) + scaleOut(Motion.snappy(), 0.94f, TransformOrigin(0.5f, 0f))
         ) {
             ClaudePanel(
                 chat, prefs, apps, claudeSeed,
@@ -410,8 +435,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
         AnimatedVisibility(
             overlay == Overlay.Settings,
-            enter = slideInHorizontally(tween(dur(340))) { it } + fadeIn(),
-            exit = slideOutHorizontally(tween(dur(280))) { it } + fadeOut()
+            enter = slideInHorizontally(Motion.soft()) { it / 2 } + fadeIn(tween(dur(220))),
+            exit = slideOutHorizontally(Motion.snappy()) { it / 2 } + fadeOut(tween(dur(180)))
         ) {
             SettingsScreen(
                 activity, prefs, repo, chat, settingsSection,
@@ -421,13 +446,13 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
         AnimatedVisibility(
             overlay == Overlay.Widgets,
-            enter = slideInVertically(tween(dur(340))) { it / 2 } + fadeIn(),
-            exit = slideOutVertically(tween(dur(260))) { it / 2 } + fadeOut()
+            enter = slideInVertically(Motion.lively()) { it / 3 } + fadeIn(tween(dur(220))),
+            exit = slideOutVertically(Motion.snappy()) { it / 3 } + fadeOut(tween(dur(180)))
         ) {
             WidgetPicker(widgets, prefs, pickerPkg, homeIndex) { overlay = Overlay.None }
         }
 
-        if (homeMenu) HomeMenu(
+        Presence(if (homeMenu) Unit else null) { HomeMenu(
             prefs,
             onWidgets = { homeMenu = false; pickerPkg = null; overlay = Overlay.Widgets },
             onWallpaper = { homeMenu = false; Actions.start(ctx, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Ταπετσαρία")) },
@@ -443,19 +468,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 }
             },
             onClose = { homeMenu = false }
-        )
-        widgetSheet?.let { (p, c) ->
+        ) }
+        Presence(widgetSheet) { (p, c) ->
             WidgetSheet(prefs, widgets, p, c, onClose = { widgetSheet = null })
         }
-        folderSheet?.let { id ->
+        Presence(folderSheet) { id ->
             FolderSheet(id, prefs, byKey, onOpen = { folderSheet = null; folderOpen = id }, onClose = { folderSheet = null })
         }
-        AnimatedVisibility(
-            sheetApp != null,
-            enter = fadeIn(tween(dur(180))) + slideInVertically(tween(dur(300))) { it / 3 },
-            exit = fadeOut(tween(dur(150)))
-        ) {
-            val app = lastSheet ?: return@AnimatedVisibility
+        Presence(sheetApp) { app ->
             AppSheet(
                 app, prefs, repo, activity,
                 onClose = { sheetApp = null },
@@ -478,11 +498,18 @@ private fun HomePage(
     widgets: WidgetController,
     onLaunch: (AppInfo, android.graphics.Rect?) -> Unit,
     onItemLong: (Int, String) -> Unit,
-    onFolder: (String) -> Unit,
+    onFolder: (String, android.graphics.Rect?) -> Unit,
     onClaude: () -> Unit,
     onSettings: (String?) -> Unit
 ) {
     val items = prefs.pages.getOrNull(index) ?: emptyMap()
+    // στόχος φακέλου: εικονίδιο πάνω στο οποίο αιωρείται μια εφαρμογή
+    val dragItem = drag.item
+    val hoverAnchor = if (drag.active && drag.moved && dragItem != null && Item.isApp(dragItem)) {
+        (drag.target() as? DropTarget.Cell)?.takeIf { it.page == index }?.let { t ->
+            prefs.occupied(index)[t.cell]?.takeIf { a -> items[a]?.let { !Item.isSized(it) && it != dragItem } == true }
+        }
+    } else null
     Column(Modifier.fillMaxSize()) {
         if (index == 0 && prefs.clockStyle != ClockStyle.Hidden) ClockHeader(prefs)
         BoxWithConstraints(
@@ -499,7 +526,9 @@ private fun HomePage(
                 val sx = sx0.coerceAtMost(prefs.cols); val sy = sy0.coerceAtMost(prefs.rows)
                 val r = cell / prefs.cols; val c = cell % prefs.cols
                 if (r >= prefs.rows) return@forEach
-                val dragging = drag.active && drag.moved && drag.source == DragSource.Home(index, cell)
+                val dragging = drag.hiddenSource == DragSource.Home(index, cell)
+                val hovered = hoverAnchor == cell
+                val hoverS by androidx.compose.animation.core.animateFloatAsState(if (hovered) 1f else 0f, Motion.lively(), label = "hover")
                 Box(
                     Modifier
                         .offset(cw * c, ch * r)
@@ -507,14 +536,29 @@ private fun HomePage(
                         .graphicsLayer { alpha = if (dragging) 0.25f else 1f },
                     contentAlignment = Alignment.Center
                 ) {
+                    if (hoverS > 0.01f) {
+                        // γυάλινο «δαχτυλίδι» φακέλου που ανοίγει
+                        Box(
+                            Modifier
+                                .size(prefs.iconSize.dp * 1.5f)
+                                .graphicsLayer { scaleX = 0.6f + 0.4f * hoverS; scaleY = 0.6f + 0.4f * hoverS; alpha = hoverS }
+                                .smokedGlass(shapeFor(if (prefs.iconShape == IconShape.Original) IconShape.Circle else prefs.iconShape, prefs.iconCorner), alpha = 0.45f)
+                                .align(Alignment.Center)
+                        )
+                    }
+                    val pop = drag.recent == item
                     when {
                         Item.isWidget(item) -> SystemWidget(Item.widgetId(item), widgets, prefs, { onItemLong(cell, item) })
                         Item.isCrator(item) -> CratorWidget(item, prefs, onClaude, onSettings, { onItemLong(cell, item) })
                         Item.isFolder(item) -> prefs.folders[Item.folderId(item)]?.let { f ->
-                            FolderCell(f, byKey, prefs, prefs.iconSize.dp, prefs.showLabels, { onFolder(Item.folderId(item)) }, { onItemLong(cell, item) })
+                            FolderCell(f, byKey, prefs, prefs.iconSize.dp, prefs.showLabels, { b -> onFolder(Item.folderId(item), b) }, { onItemLong(cell, item) },
+                                Modifier.graphicsLayer { val s = 1f - 0.1f * hoverS; scaleX = s; scaleY = s }, pop = pop)
                         }
                         else -> byKey[item]?.let { app ->
-                            AppCell(app, prefs, prefs.iconSize.dp, prefs.showLabels, { b -> onLaunch(app, b) }, { onItemLong(cell, item) })
+                            PopIn(pop) {
+                                AppCell(app, prefs, prefs.iconSize.dp, prefs.showLabels, { b -> onLaunch(app, b) }, { onItemLong(cell, item) },
+                                    Modifier.graphicsLayer { val s = 1f - 0.12f * hoverS; scaleX = s; scaleY = s })
+                            }
                         }
                     }
                 }
@@ -529,7 +573,7 @@ private fun Dock(
     byKey: Map<String, AppInfo>,
     drag: DragState,
     onLaunch: (AppInfo, android.graphics.Rect?) -> Unit,
-    onFolder: (String) -> Unit,
+    onFolder: (String, android.graphics.Rect?) -> Unit,
     onItemLong: (Int, String) -> Unit,
     onSearch: () -> Unit
 ) {
@@ -547,30 +591,34 @@ private fun Dock(
     }
     val bg = when (style) {
         DockStyle.Minimal, DockStyle.Arc -> Modifier
+        DockStyle.Smoke -> Modifier.smokedGlass(shape, alpha = prefs.dockOpacity / 100f + 0.1f, tint = Color(prefs.dockColor))
         DockStyle.Glass -> Modifier
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.22f), Color.White.copy(alpha = 0.06f))), shape)
             .border(1.dp, Color.White.copy(alpha = 0.28f), shape)
         else -> Modifier.background(bgColor, shape)
     }
-    val shadow = if (prefs.dockShadow && style != DockStyle.Minimal && style != DockStyle.Arc) Modifier.shadow(12.dp, shape) else Modifier
+    val shadow = if ((prefs.dockShadow || style == DockStyle.Smoke) && style != DockStyle.Minimal && style != DockStyle.Arc) Modifier.shadow(20.dp, shape, ambientColor = Color.Black, spotColor = Color.Black) else Modifier
     val hot = drag.active && drag.moved && drag.target() is DropTarget.DockAt
+    val dockScale by androidx.compose.animation.core.animateFloatAsState(if (hot) 1.03f else 1f, Motion.pop(), label = "dockHot")
 
     @Composable
     fun cell(i: Int, item: String, mod: Modifier) {
         val m = mod.onGloballyPositioned { drag.dockSlots[i] = it.boundsInWindow() }
         if (Item.isFolder(item)) {
             prefs.folders[Item.folderId(item)]?.let { f ->
-                FolderCell(f, byKey, prefs, size, prefs.dockLabels, { onFolder(Item.folderId(item)) }, { onItemLong(i, item) }, m)
+                FolderCell(f, byKey, prefs, size, prefs.dockLabels, { b -> onFolder(Item.folderId(item), b) }, { onItemLong(i, item) }, m, pop = drag.recent == item)
             }
         } else byKey[item]?.let { app ->
-            AppCell(app, prefs, size, prefs.dockLabels, { onLaunch(app, it) }, { onItemLong(i, item) }, m)
+            PopIn(drag.recent == item, modifier = m) {
+                AppCell(app, prefs, size, prefs.dockLabels, { onLaunch(app, it) }, { onItemLong(i, item) })
+            }
         }
     }
 
     Box(Modifier.fillMaxWidth().onGloballyPositioned { drag.dockRect = it.boundsInWindow() }, contentAlignment = Alignment.Center) {
         Column(
-            outer.then(shadow).clip(shape).then(bg)
-                .then(if (hot) Modifier.border(2.dp, Color.White.copy(alpha = 0.6f), shape) else Modifier)
+            outer.graphicsLayer { scaleX = dockScale; scaleY = dockScale }.then(shadow).clip(shape).then(bg)
+                .then(if (hot) Modifier.border(1.dp, Color.White.copy(alpha = 0.45f), shape) else Modifier)
                 .padding(vertical = 10.dp, horizontal = 8.dp)
         ) {
             if (prefs.searchPos == SearchPos.InDock) SearchPill(prefs, Modifier.padding(6.dp, 0.dp, 6.dp, 8.dp), onSearch)
@@ -598,7 +646,7 @@ private fun Dock(
                             val t = (pos - (n - 1) / 2f) / ((n - 1) / 2f)
                             (-22f * t * t).dp
                         } else 0.dp
-                        val dragging = drag.active && drag.moved && drag.source == DragSource.Dock(iv.index)
+                        val dragging = drag.hiddenSource == DragSource.Dock(iv.index)
                         cell(iv.index, iv.value, Modifier.width(size + 8.dp).offset(y = lift).graphicsLayer { alpha = if (dragging) 0.25f else 1f })
                     }
                 }
@@ -701,11 +749,11 @@ private fun MenuTile(label: String, icon: ImageVector, onClick: () -> Unit) {
         Modifier.width(100.dp).clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = Color.White)
+        Box(Modifier.size(56.dp).smokedGlass(CircleShape, alpha = 0.35f, tint = MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = Smoke.pearl)
         }
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = Color.White, fontSize = 12.sp, maxLines = 1)
+        Spacer(Modifier.height(8.dp))
+        Text(label, color = Smoke.pearl, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
     }
 }
 
@@ -831,8 +879,8 @@ private fun ClockHeader(prefs: Prefs) {
     Column(Modifier.fillMaxWidth().padding(24.dp, 18.dp, 24.dp, 8.dp).then(open)) {
         when (prefs.clockStyle) {
             ClockStyle.Big -> {
-                Text(time, fontSize = 76.sp, fontWeight = FontWeight.Thin, color = Color.White, style = androidx.compose.ui.text.TextStyle(shadow = shadow))
-                Text(date, fontSize = 17.sp, color = Color.White.copy(alpha = 0.85f), style = androidx.compose.ui.text.TextStyle(shadow = shadow))
+                Text(time, style = androidx.compose.ui.text.TextStyle(fontFamily = Manrope, fontSize = 84.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-3).sp, color = Smoke.pearl, shadow = shadow))
+                Text(date, style = androidx.compose.ui.text.TextStyle(fontFamily = Manrope, fontSize = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp, color = Smoke.pearl.copy(alpha = 0.82f), shadow = shadow))
             }
             ClockStyle.Minimal -> Row(verticalAlignment = Alignment.Bottom) {
                 Text(time, fontSize = 34.sp, fontWeight = FontWeight.Light, color = Color.White)
@@ -867,21 +915,18 @@ private fun PageIndicator(pager: PagerState, dash: Boolean) {
 
 @Composable
 fun SearchPill(prefs: Prefs, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val bg = Color(prefs.dockColor).copy(alpha = (prefs.dockOpacity / 100f + 0.15f).coerceAtMost(1f))
     Row(
         modifier
             .fillMaxWidth()
-            .height(48.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(bg)
-            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
+            .height(50.dp)
+            .smokedGlass(RoundedCornerShape(25.dp), alpha = (prefs.dockOpacity / 100f + 0.15f).coerceAtMost(1f), tint = Color(prefs.dockColor))
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        Text("Ρώτα τον Claude ή ψάξε…", color = Color.White.copy(alpha = 0.75f), fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Text("Ρώτα τον Claude ή ψάξε", color = Smoke.mist, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
         Icon(Icons.Rounded.Mic, null, tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
     }
 }

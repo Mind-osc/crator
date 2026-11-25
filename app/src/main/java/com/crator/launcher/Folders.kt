@@ -49,6 +49,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 
 fun folderBg(f: Folder, prefs: Prefs): Color =
     (if (f.color != 0) Color(f.color) else Color(prefs.folderColor)).copy(alpha = prefs.folderOpacity / 100f)
@@ -59,9 +65,8 @@ fun FolderIcon(f: Folder, byKey: Map<String, AppInfo>, prefs: Prefs, size: Dp, m
     val apps = f.apps.mapNotNull { byKey[it] }
     Box(
         modifier.size(size)
-            .then(if (prefs.iconShadow) Modifier.shadow(5.dp, shape, clip = false) else Modifier)
-            .clip(shape).background(folderBg(f, prefs))
-            .border(1.dp, Color.White.copy(alpha = 0.15f), shape),
+            .then(if (prefs.iconShadow) Modifier.shadow(6.dp, shape, clip = false) else Modifier)
+            .smokedGlass(shape, alpha = prefs.folderOpacity / 100f, tint = if (f.color != 0) Color(f.color) else Color(prefs.folderColor)),
         contentAlignment = Alignment.Center
     ) {
         when (prefs.folderStyle) {
@@ -90,22 +95,28 @@ fun FolderCell(
     prefs: Prefs,
     size: Dp,
     showLabel: Boolean,
-    onClick: () -> Unit,
+    onClick: (Rect?) -> Unit,
     onLongClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pop: Boolean = false
 ) {
     val haptic = LocalHapticFeedback.current
+    val bounds = remember { arrayOfNulls<Rect>(1) }
     val badge = if (prefs.badges) f.apps.sumOf { k -> byKey[k]?.let { Badges.of(it.component.packageName) } ?: 0 } else 0
     Column(
         modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
-            onClick = onClick, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() }
+            onClick = { onClick(bounds[0]) }, onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() }
         ).padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box {
-            FolderIcon(f, byKey, prefs, size)
-            BadgeView(badge, prefs, size, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp))
+        PopIn(pop, ring = true, modifier = Modifier.onGloballyPositioned { c ->
+            val r = c.boundsInWindow(); bounds[0] = Rect(r.left.toInt(), r.top.toInt(), r.right.toInt(), r.bottom.toInt())
+        }) {
+            Box {
+                FolderIcon(f, byKey, prefs, size)
+                BadgeView(badge, prefs, size, Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp))
+            }
         }
         if (showLabel) {
             Spacer(Modifier.height(5.dp))
@@ -132,22 +143,23 @@ fun FolderPopup(
         contentAlignment = Alignment.Center
     ) {
         Column(
-            Modifier.padding(24.dp).fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
-                .background((if (f.color != 0) Color(f.color) else Color(prefs.folderColor)).copy(alpha = 0.94f))
-                .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(32.dp))
+            Modifier.padding(22.dp).fillMaxWidth()
+                .shadow(40.dp, RoundedCornerShape(36.dp), ambientColor = Color.Black, spotColor = Color.Black)
+                .smokedGlass(RoundedCornerShape(36.dp), alpha = 0.74f, tint = if (f.color != 0) Color(f.color) else Color(prefs.folderColor))
                 .pointerInput(Unit) { detectTapGestures { } }
-                .padding(18.dp)
+                .padding(20.dp)
         ) {
             Text(
-                f.name, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium,
+                f.name, color = Smoke.pearl, fontSize = 24.sp, fontWeight = FontWeight.Light, letterSpacing = (-0.3).sp,
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { renaming = true }.padding(6.dp)
             )
             Spacer(Modifier.height(10.dp))
-            apps.chunked(prefs.folderCols).forEach { row ->
+            apps.chunked(prefs.folderCols).forEachIndexed { ri, row ->
                 Row(Modifier.fillMaxWidth()) {
-                    row.forEach { a ->
-                        AppCell(a, prefs, prefs.iconSize.dp, true, { b -> onLaunch(a, b) }, { onAppLong(a) }, Modifier.weight(1f))
+                    row.forEachIndexed { ci, a ->
+                        StaggerIn(ri * prefs.folderCols + ci, Modifier.weight(1f)) {
+                            AppCell(a, prefs, prefs.iconSize.dp, true, { b -> onLaunch(a, b) }, { onAppLong(a) })
+                        }
                     }
                     repeat(prefs.folderCols - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -218,15 +230,17 @@ fun FolderSheet(id: String, prefs: Prefs, byKey: Map<String, AppInfo>, onOpen: (
 @Composable
 fun BottomCard(onClose: () -> Unit, content: @Composable () -> Unit) {
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClose() },
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
-            Modifier.navigationBarsPadding().padding(12.dp).fillMaxWidth()
-                .clip(RoundedCornerShape(28.dp)).background(Color(0xF2161722))
+            Modifier.navigationBarsPadding().padding(10.dp).fillMaxWidth()
+                .sheetMotion()
+                .shadow(36.dp, RoundedCornerShape(34.dp), ambientColor = Color.Black, spotColor = Color.Black)
+                .smokedGlass(RoundedCornerShape(34.dp), alpha = 0.7f)
                 .pointerInput(Unit) { detectTapGestures { } }
-                .padding(18.dp)
+                .padding(20.dp)
         ) { content() }
     }
 }
@@ -237,12 +251,31 @@ fun ChipGrid(chips: List<Pair<String, () -> Unit>>) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             row.forEach { (label, fn) ->
                 Box(
-                    Modifier.weight(1f).padding(vertical = 4.dp).clip(RoundedCornerShape(14.dp))
-                        .background(Color.White.copy(alpha = 0.08f)).clickable { fn() }.padding(12.dp),
+                    Modifier.weight(1f).padding(vertical = 4.dp).clip(RoundedCornerShape(18.dp))
+                        .background(Color.White.copy(alpha = 0.06f))
+                        .border(0.6.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(18.dp))
+                        .clickable { fn() }.padding(vertical = 14.dp, horizontal = 10.dp),
                     contentAlignment = Alignment.Center
-                ) { Text(label, color = Color.White, fontSize = 14.sp) }
+                ) { Text(label, color = Smoke.pearl, fontSize = 14.sp, fontWeight = FontWeight.Medium) }
             }
             if (row.size == 1) Spacer(Modifier.weight(1f))
         }
     }
+}
+
+/** Εμφάνιση στοιχείων με μικρή καθυστέρηση το ένα μετά το άλλο */
+@Composable
+fun StaggerIn(index: Int, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable () -> Unit) {
+    val a = remember { Animatable(if (enabled) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (!enabled) return@LaunchedEffect
+        delay((index * 22L / Motion.speed).toLong().coerceAtMost(260))
+        a.animateTo(1f, Motion.lively())
+    }
+    Box(modifier.graphicsLayer {
+        alpha = a.value.coerceIn(0f, 1f)
+        val s = 0.82f + 0.18f * a.value
+        scaleX = s; scaleY = s
+        translationY = (1f - a.value) * 18.dp.toPx()
+    }, contentAlignment = Alignment.Center) { content() }
 }

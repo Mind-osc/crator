@@ -151,9 +151,11 @@ fun AppIcon(app: AppInfo, size: Dp, prefs: Prefs, modifier: Modifier = Modifier)
 }
 
 fun labelStyle(prefs: Prefs, sizeSp: Int = prefs.labelSize) = TextStyle(
+    fontFamily = Manrope,
+    letterSpacing = 0.1.sp,
     color = Color(prefs.labelColor),
     fontSize = sizeSp.sp,
-    fontWeight = if (prefs.labelBold) FontWeight.SemiBold else FontWeight.Normal,
+    fontWeight = if (prefs.labelBold) FontWeight.SemiBold else FontWeight.Medium,
     textAlign = TextAlign.Center,
     shadow = if (prefs.labelShadow) Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 2f), 6f) else null
 )

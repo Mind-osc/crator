@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -53,6 +54,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -75,6 +77,7 @@ fun AppDrawer(
     onClose: () -> Unit
 ) {
     var q by remember { mutableStateOf("") }
+    val openedAt = remember { System.currentTimeMillis() }
     val focus = remember { FocusRequester() }
     val nq = q.norm().trim()
     val list = remember(apps, nq, prefs.hidden) {
@@ -100,6 +103,7 @@ fun AppDrawer(
         Modifier
             .fillMaxSize()
             .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.05f), Color.Transparent)))
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -115,7 +119,7 @@ fun AppDrawer(
 
         Row(
             Modifier.padding(16.dp, 0.dp, 16.dp, 10.dp).fillMaxWidth().height(50.dp)
-                .clip(RoundedCornerShape(25.dp)).background(Color.White.copy(alpha = 0.1f)).padding(horizontal = 16.dp),
+                .smokedGlass(RoundedCornerShape(25.dp), alpha = 0.4f).padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Rounded.Search, null, tint = Color.White.copy(alpha = 0.7f))
@@ -124,7 +128,7 @@ fun AppDrawer(
                 if (q.isEmpty()) Text("Αναζήτηση σε ${list.size} εφαρμογές", color = Color.White.copy(alpha = 0.5f), fontSize = 15.sp)
                 BasicTextField(
                     q, { q = it }, singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 15.sp),
+                    textStyle = TextStyle(color = Color.White, fontSize = 15.sp, fontFamily = Manrope),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = {
@@ -157,8 +161,10 @@ fun AppDrawer(
                 contentPadding = PaddingValues(10.dp, 4.dp, 10.dp, 24.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(list, key = { it.key }) { app ->
-                    AppCell(app, prefs, prefs.iconSize.dp, true, { onLaunch(app, it) }, { onLong(app) }, Modifier.animateItemPlacement())
+                itemsIndexed(list, key = { _, it -> it.key }) { i, app ->
+                    StaggerIn(i, Modifier.animateItemPlacement(), enabled = i < 28 && System.currentTimeMillis() - openedAt < 700) {
+                        AppCell(app, prefs, prefs.iconSize.dp, true, { onLaunch(app, it) }, { onLong(app) })
+                    }
                 }
             }
         } else {
