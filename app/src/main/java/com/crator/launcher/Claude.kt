@@ -15,6 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -269,7 +270,7 @@ fun ClaudePanel(
                 .fillMaxSize(fraction = 1f)
                 .then(bg)
                 .clip(shape)
-                .pointerInput(Unit) { androidx.compose.foundation.gestures.detectTapGestures { } }
+                .pointerInput(Unit) { detectTapGestures { } }
                 .animateContentSize()
         ) {
             // Κεφαλίδα
