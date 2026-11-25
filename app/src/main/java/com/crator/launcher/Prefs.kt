@@ -220,6 +220,7 @@ class Prefs(private val context: Context) {
     var dashShortcuts by bool("dash_shortcuts", true)
     var dashCpu by bool("dash_cpu", true)
     var dashMem by bool("dash_mem", true)
+    var dashStorage by bool("dash_storage", true)
     var dashNet by bool("dash_net", true)
     var dashBattery by bool("dash_bat", true)
     var dashThermal by bool("dash_thermal", true)

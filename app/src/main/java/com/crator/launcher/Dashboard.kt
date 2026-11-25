@@ -93,6 +93,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.combinedClickable
@@ -368,90 +369,85 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
     val editScale by animateFloatAsState(if (editMode) 0.97f else 1f, Motion.lively(Motion.sheet), label = "edit")
 
     @Composable
-    fun unit(id: String) {
+    fun unit(id: String, mod: Modifier) {
         when (id) {
-            "shortcuts" -> Card {
+            "shortcuts" -> Column(mod, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 visibleShortcuts.chunked(4).forEach { row ->
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { s ->
+                            val on = s.label == "Φακός" && torch
+                            val (tc, ta) = LocalDashStyle.current
                             Column(
-                                Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { s.run() }.padding(vertical = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                Modifier.weight(1f).aspectRatio(1f)
+                                    .smokedGlass(RoundedCornerShape(22.dp), alpha = if (on) 0.9f else ta, tint = if (on) accent else tc)
+                                    .clickable(enabled = !editMode) { s.run() },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                val on = s.label == "Φακός" && torch
-                                Box(
-                                    Modifier.size(38.dp).clip(CircleShape).background(if (on) accent else Color.White.copy(alpha = 0.09f)),
-                                    contentAlignment = Alignment.Center
-                                ) { Icon(s.icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(19.dp)) }
-                                Spacer(Modifier.height(3.dp))
-                                Text(s.label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1)
+                                Icon(s.icon, null, tint = if (on) Color.Black else Smoke.pearl, modifier = Modifier.size(28.dp))
+                                Spacer(Modifier.height(6.dp))
+                                Text(s.label, color = if (on) Color.Black else Smoke.pearl.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
                         }
                         repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
-            "cpu" -> Card {
-                Header(if (stats.cpuIsFreq) "CPU, συχνότητα" else "CPU, φόρτος", "%.0f%%".format(stats.cpuPct), accent)
-                val soc = if (Build.VERSION.SDK_INT >= 31) "${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}".trim() else Build.HARDWARE
-                Sub("$soc, ${stats.cores.size} πυρήνες")
-                LineChart(stats.cpuHist, 100f, accent, height = 52)
-                Spacer(Modifier.height(6.dp))
-                Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+            "cpu" -> Card(mod) {
+                Header("CPU", "%.0f%%".format(stats.cpuPct), accent)
+                Sub("${stats.cores.size} πυρήνες" + if (stats.cpuIsFreq) ", συχνότητα" else "")
+                Spacer(Modifier.weight(1f))
+                LineChart(stats.cpuHist, 100f, accent, height = 40)
+                Row(Modifier.fillMaxWidth().height(14.dp).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
                     stats.cores.forEach { (cur, max) ->
-                        val f = if (max > 0) (cur.toFloat() / max).coerceIn(0.02f, 1f) else 0.02f
-                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(Modifier.fillMaxWidth().height((26 * f).dp).clip(RoundedCornerShape(3.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
-                            Text(if (cur > 0) "${cur / 1000}" else "off", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                        }
+                        val f = if (max > 0) (cur.toFloat() / max).coerceIn(0.08f, 1f) else 0.08f
+                        Box(Modifier.weight(1f).fillMaxHeight(f).clip(RoundedCornerShape(2.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
                     }
                 }
             }
-            "mem" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Card(Modifier.weight(1f)) {
-                    Header("RAM", "", accent)
-                    Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%", size = 70)
-                    Sub("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}" + if (stats.lowMem) ", χαμηλή!" else "")
-                    LineChart(stats.ramHist, 100f, Color(0xFF7DE3C2), height = 34)
+            "ram" -> Card(mod) {
+                Header("RAM", "", accent)
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%", size = 66)
                 }
-                Card(Modifier.weight(1f).clickable(enabled = !editMode) { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
-                    Header("Χώρος", "", accent)
-                    Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%", size = 70)
-                    Sub("${fmtBytes(stats.stUsed)} / ${fmtBytes(stats.stTotal)}")
-                    Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}, ${repo.apps.value.size} εφαρμογές")
-                }
+                Sub("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}")
             }
-            "net" -> Card {
-                Header("Δίκτυο, ${stats.netType}", "↓ ${fmtRate(stats.rxRate)}", Color(0xFF6FC3FF))
-                Sub(
-                    "↑ ${fmtRate(stats.txRate)}" +
-                        (stats.rssi?.let { ", σήμα $it dBm" } ?: "") +
-                        (if (stats.bandwidth > 0) ", ζώνη ~${stats.bandwidth / 1000} Mbps" else "")
-                )
-                DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0), height = 46)
-                Sub("Από την εκκίνηση: ↓ ${fmtBytes(stats.rxTotal)}, ↑ ${fmtBytes(stats.txTotal)}")
-            }
-            "battery" -> Card(Modifier.clickable(enabled = !editMode) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
-                Header("Μπαταρία, ${stats.batStatus}", "${stats.batLevel}%", Color(0xFF9BE37D))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 64)
-                    Spacer(Modifier.width(14.dp))
-                    Column {
-                        Sub("%.1f °C, %.2f V, ${stats.batCurrent} mA".format(stats.batTemp, stats.batVolt / 1000f))
-                        Sub("Υγεία: ${stats.batHealth}" + if (stats.batCycles >= 0) ", ${stats.batCycles} κύκλοι" else "")
-                        LineChart(stats.batHist, null, Color(0xFF9BE37D), height = 30)
-                    }
+            "storage" -> Card(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
+                Header("Χώρος", "", accent)
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%", size = 66)
                 }
+                Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}")
             }
-            "thermal" -> Card {
-                Header("Θερμική κατάσταση", stats.thermal, Color(0xFFFF8A65))
-                stats.headroom?.let { h ->
-                    Sub("Περιθώριο πριν το throttling")
-                    Bar((1f - h).coerceIn(0f, 1f), Color(0xFFFF8A65))
+            "net" -> Card(mod) {
+                Header("Δίκτυο", "↓ ${fmtRate(stats.rxRate)}", Color(0xFF6FC3FF))
+                Sub("↑ ${fmtRate(stats.txRate)}, ${stats.netType}")
+                Spacer(Modifier.weight(1f))
+                DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0), height = 44)
+            }
+            "battery" -> Card(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
+                Header("Μπαταρία", "", Color(0xFF9BE37D))
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 66)
                 }
+                Sub("%.1f °C, ${stats.batCurrent} mA".format(stats.batTemp))
+            }
+            "thermal" -> Card(mod) {
+                Header("Θερμικά", "", Color(0xFFFF8A65))
+                Spacer(Modifier.weight(1f))
+                Text(stats.thermal, color = Color(0xFFFF8A65), fontSize = 24.sp, fontWeight = FontWeight.Light)
+                stats.headroom?.let { h -> Bar((1f - h).coerceIn(0f, 1f), Color(0xFFFF8A65)) }
+                Spacer(Modifier.weight(1f))
+                Sub(stats.batStatus)
             }
         }
     }
+
+    // θέσεις για τη μετακίνηση σε πλέγμα
+    val slots = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
+    var container by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
+    var dragOff by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var lastSwap by remember { mutableStateOf(0L) }
 
     CompositionLocalProvider(
         LocalDensity provides Density(d.density * prefs.dashScale / 100f, d.fontScale),
@@ -494,50 +490,53 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
             }
         }
 
-        visible.forEach { id -> androidx.compose.runtime.key(id) {
+        // Πλέγμα: μικρά tiles σε δύο στήλες, οι συντομεύσεις σε όλο το πλάτος
+        val rows = mutableListOf<List<String>>()
+        var pending: String? = null
+        for (id in visible) {
+            if (id == "shortcuts") {
+                pending?.let { rows += listOf(it) }; pending = null
+                rows += listOf(id)
+            } else if (pending == null) pending = id
+            else { rows += listOf(pending!!, id); pending = null }
+        }
+        pending?.let { rows += listOf(it) }
+
+        @Composable
+        fun cell(id: String, mod: Modifier) = androidx.compose.runtime.key(id) {
             val isDrag = draggingId == id
-            val lift by animateFloatAsState(if (isDrag) 1.03f else 1f, Motion.pop(Motion.drag), label = "lift")
+            val lift by animateFloatAsState(if (isDrag) 1.05f else 1f, Motion.pop(Motion.drag), label = "lift")
             Box(
-                Modifier
-                    .onGloballyPositioned { heights[id] = it.size.height }
+                mod
+                    .onGloballyPositioned { c -> container?.let { if (it.isAttached && c.isAttached) slots[id] = it.localBoundingBoxOf(c) } }
                     .zIndex(if (isDrag) 1f else 0f)
                     .graphicsLayer {
-                        translationY = if (isDrag) dragY else 0f
+                        if (isDrag) { translationX = dragOff.x; translationY = dragOff.y }
                         val sc = editScale * lift
                         scaleX = sc; scaleY = sc
                     }
                     .then(if (!editMode) Modifier.longPress { editMode = true } else Modifier)
             ) {
-                unit(id)
+                unit(id, if (id == "shortcuts") Modifier.fillMaxWidth() else Modifier.fillMaxSize())
                 if (editMode) {
-                    // Πιάνει όλα τα αγγίγματα της κάρτας: σύρσιμο για αλλαγή σειράς
                     Box(
                         Modifier.matchParentSize().pointerInput(id) {
-                            val gap = 8.dp.toPx()
-                            fun neighbour(dir: Int): String? {
-                                val vis = live.filter { prefs.dashEnabled(it) }
-                                return vis.getOrNull(vis.indexOf(id) + dir)
-                            }
-                            detectVerticalDragGestures(
-                                onDragStart = { draggingId = id; dragY = 0f },
-                                onDragEnd = { prefs.dashOrder = live; draggingId = null; dragY = 0f },
-                                onDragCancel = { prefs.dashOrder = live; draggingId = null; dragY = 0f }
-                            ) { c, dy ->
+                            androidx.compose.foundation.gestures.detectDragGestures(
+                                onDragStart = { draggingId = id; dragOff = androidx.compose.ui.geometry.Offset.Zero },
+                                onDragEnd = { prefs.dashOrder = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero },
+                                onDragCancel = { prefs.dashOrder = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero }
+                            ) { c, amount ->
                                 c.consume()
-                                dragY += dy
-                                val next = neighbour(1); val prev = neighbour(-1)
-                                if (dragY > 0 && next != null) {
-                                    val nh = (heights[next] ?: 0) + gap
-                                    if (dragY > nh / 2f) {
-                                        live = live.toMutableList().also { l -> val a = l.indexOf(id); val b = l.indexOf(next); l[a] = next; l[b] = id }
-                                        dragY -= nh
-                                    }
-                                } else if (dragY < 0 && prev != null) {
-                                    val ph = (heights[prev] ?: 0) + gap
-                                    if (-dragY > ph / 2f) {
-                                        live = live.toMutableList().also { l -> val a = l.indexOf(id); val b = l.indexOf(prev); l[a] = prev; l[b] = id }
-                                        dragY += ph
-                                    }
+                                dragOff += amount
+                                val mine = slots[id] ?: return@detectDragGestures
+                                val center = mine.center + dragOff
+                                val now = System.currentTimeMillis()
+                                if (now - lastSwap < 160) return@detectDragGestures
+                                val hit = slots.entries.firstOrNull { (k, r) -> k != id && k in live && prefs.dashEnabled(k) && r.contains(center) }
+                                if (hit != null) {
+                                    live = live.toMutableList().also { l -> val x = l.indexOf(id); val y = l.indexOf(hit.key); l[x] = hit.key; l[y] = id }
+                                    dragOff -= (hit.value.center - mine.center)
+                                    lastSwap = now
                                 }
                             }
                         }
@@ -550,7 +549,20 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                     ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(14.dp)) }
                 }
             }
-        } }
+        }
+
+        Column(
+            Modifier.fillMaxWidth().onGloballyPositioned { container = it },
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            rows.forEach { row ->
+                if (row.size == 1 && row[0] == "shortcuts") cell("shortcuts", Modifier.fillMaxWidth())
+                else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { id -> cell(id, Modifier.weight(1f).aspectRatio(1.18f)) }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
     }
 
     // Μενού «+»: όσες κάρτες έχουν αφαιρεθεί
@@ -582,18 +594,18 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
 }
 
 val DASH_UNITS = listOf(
-    "shortcuts" to "Συντομεύσεις", "cpu" to "CPU", "mem" to "RAM & χώρος",
-    "net" to "Δίκτυο", "battery" to "Μπαταρία", "thermal" to "Θερμική κατάσταση"
+    "cpu" to "CPU", "ram" to "RAM", "storage" to "Χώρος", "net" to "Δίκτυο",
+    "battery" to "Μπαταρία", "thermal" to "Θερμικά", "shortcuts" to "Συντομεύσεις"
 )
 
 fun Prefs.dashEnabled(id: String): Boolean = when (id) {
-    "shortcuts" -> dashShortcuts; "cpu" -> dashCpu; "mem" -> dashMem
+    "shortcuts" -> dashShortcuts; "cpu" -> dashCpu; "ram" -> dashMem; "storage" -> dashStorage
     "net" -> dashNet; "battery" -> dashBattery; "thermal" -> dashThermal; else -> false
 }
 
 fun Prefs.setDashEnabled(id: String, v: Boolean) {
     when (id) {
-        "shortcuts" -> dashShortcuts = v; "cpu" -> dashCpu = v; "mem" -> dashMem = v
+        "shortcuts" -> dashShortcuts = v; "cpu" -> dashCpu = v; "ram" -> dashMem = v; "storage" -> dashStorage = v
         "net" -> dashNet = v; "battery" -> dashBattery = v; "thermal" -> dashThermal = v
     }
 }
@@ -611,7 +623,7 @@ val DASH_SHORTCUTS = listOf(
 )
 
 @Composable
-private fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun Card(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(
         modifier
             .fillMaxWidth()

@@ -490,7 +490,8 @@ private fun DashSection(p: Prefs) {
     Group("Περιεχόμενο")
     SwitchPref("Συντομεύσεις", p.dashShortcuts) { p.dashShortcuts = it }
     SwitchPref("CPU", p.dashCpu) { p.dashCpu = it }
-    SwitchPref("RAM & χώρος", p.dashMem) { p.dashMem = it }
+    SwitchPref("RAM", p.dashMem) { p.dashMem = it }
+    SwitchPref("Χώρος", p.dashStorage) { p.dashStorage = it }
     SwitchPref("Δίκτυο", p.dashNet) { p.dashNet = it }
     SwitchPref("Μπαταρία", p.dashBattery) { p.dashBattery = it }
     SwitchPref("Θερμική κατάσταση", p.dashThermal) { p.dashThermal = it }
