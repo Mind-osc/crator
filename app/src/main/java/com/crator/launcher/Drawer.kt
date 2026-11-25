@@ -58,6 +58,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.graphicsLayer
@@ -171,9 +174,56 @@ fun AppDrawer(
         )
     }
 
+    // Swipe κάτω για κλείσιμο: το συρτάρι ακολουθεί το δάχτυλο όταν η λίστα είναι στην κορυφή
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val pull = remember { androidx.compose.animation.core.Animatable(0f) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun atTop(): Boolean = if (prefs.drawerStyle == DrawerStyle.Grid)
+        gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
+    else listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+
     Column(
         Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                translationY = pull.value
+                alpha = 1f - (pull.value / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.6f
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    if (drag?.active == true || !atTop()) return@awaitEachGesture
+                    val slop = viewConfiguration.touchSlop
+                    val vt = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                    vt.addPosition(down.uptimeMillis, down.position)
+                    var total = 0f
+                    var pulling = false
+                    while (true) {
+                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        if (drag?.active == true) { pulling = false; break }
+                        if (!ch.pressed) break
+                        val dy = ch.position.y - ch.previousPosition.y
+                        vt.addPosition(ch.uptimeMillis, ch.position)
+                        if (!pulling) {
+                            total += dy
+                            if (total > slop) pulling = true
+                            else if (total < -slop) break
+                        }
+                        if (pulling) {
+                            ch.consume()
+                            val v = (pull.value + dy).coerceAtLeast(0f)
+                            scope.launch { pull.snapTo(v) }
+                        }
+                    }
+                    if (pulling) {
+                        val vel = vt.calculateVelocity().y
+                        if (pull.value > size.height * 0.22f || vel > 1800f) close()
+                        else scope.launch { pull.animateTo(0f, Motion.lively(Motion.overlay)) }
+                    }
+                }
+            }
             .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.05f), Color.Transparent)))
             .statusBarsPadding()
@@ -194,6 +244,7 @@ fun AppDrawer(
         if (prefs.drawerStyle == DrawerStyle.Grid) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(prefs.drawerCols),
+                state = gridState,
                 modifier = Modifier.weight(1f).nestedScroll(conn),
                 contentPadding = PaddingValues(10.dp, 4.dp, 10.dp, 24.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -225,7 +276,7 @@ fun AppDrawer(
                 }
             }
         } else {
-            LazyColumn(Modifier.weight(1f).nestedScroll(conn), contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 24.dp)) {
+            LazyColumn(Modifier.weight(1f).nestedScroll(conn), state = listState, contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 24.dp)) {
                 items(list, key = { it.key }) { e ->
                     Row(
                         Modifier.fillMaxWidth()
