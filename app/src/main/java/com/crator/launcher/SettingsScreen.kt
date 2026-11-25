@@ -405,7 +405,19 @@ private fun DrawerSection(p: Prefs, repo: AppRepository) {
 @Composable
 private fun ClaudeSection(p: Prefs, chat: ChatState) {
     val ctx = LocalContext.current
-    Group("Σύνδεση")
+    Group("Τρόπος σύνδεσης")
+    ChoicePref("Πώς μιλάς με τον Claude", ClaudeMode.entries, p.claudeMode, { it.label }) { p.claudeMode = it }
+    Text(
+        when (p.claudeMode) {
+            ClaudeMode.Auto -> "Με API key αν έχεις βάλει, αλλιώς το claude.ai με τον λογαριασμό σου."
+            ClaudeMode.Api -> "Δικό μας παράθυρο, απαντήσεις σε πραγματικό χρόνο, άνοιγμα εφαρμογών με εντολή. Χρειάζεται API key."
+            ClaudeMode.Web -> "Το claude.ai μέσα στο παράθυρο, με τον λογαριασμό και τη συνδρομή σου. Σύνδεση με email (η σύνδεση με Google συχνά δεν επιτρέπεται μέσα σε εφαρμογές)."
+            ClaudeMode.App -> "Γράφεις στο Crator και το μήνυμα ανοίγει στην επίσημη εφαρμογή Claude."
+        },
+        color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp)
+    )
+    if (p.effectiveClaudeMode() == ClaudeMode.Web) TextButton(onClick = { ClaudeWeb.signOut(ctx) }) { Text("Αποσύνδεση από το claude.ai") }
+    Group("API key")
     var key by remember { mutableStateOf(p.apiKey) }
     OutlinedTextField(
         key, { key = it }, label = { Text("Anthropic API key") }, singleLine = true,

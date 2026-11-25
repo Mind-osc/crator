@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -24,6 +25,18 @@ class MainActivity : ComponentActivity() {
     lateinit var repo: AppRepository
     lateinit var widgets: WidgetController
     val homeEvents = mutableIntStateOf(0)
+
+    private var fileResult: ((Int, Intent?) -> Unit)? = null
+    private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        fileResult?.invoke(r.resultCode, r.data); fileResult = null
+    }
+
+    /** Επιλογή αρχείων για ανέβασμα στο claude.ai */
+    fun pickFiles(intent: Intent, onResult: (Int, Intent?) -> Unit): Boolean = try {
+        fileResult?.invoke(RESULT_CANCELED, null)
+        fileResult = onResult
+        fileLauncher.launch(intent); true
+    } catch (e: Exception) { fileResult = null; false }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +98,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        ClaudeWeb.release()
         repo.dispose()
         super.onDestroy()
     }

@@ -60,6 +60,8 @@ enum class FolderStyle(val label: String) { Grid("Πλέγμα 2×2"), Stack("Σ
 
 enum class BadgeStyle(val label: String) { Count("Αριθμός"), Dot("Τελεία") }
 
+enum class ClaudeMode(val label: String) { Auto("Αυτόματο"), Api("API key"), Web("claude.ai"), App("Εφαρμογή Claude") }
+
 enum class PanelStyle(val label: String) { Glass("Γυαλί"), Aurora("Aurora"), Solid("Συμπαγές") }
 
 class Prefs(private val context: Context) {
@@ -157,6 +159,11 @@ class Prefs(private val context: Context) {
     var claudeOpenApps by bool("claude_open", true)
     var claudeInstructions by str("claude_instr", "")
     var panelStyle by enm("panel_style", PanelStyle.Glass)
+    var claudeMode by enm("claude_mode", ClaudeMode.Auto)
+    fun effectiveClaudeMode(): ClaudeMode = when (claudeMode) {
+        ClaudeMode.Auto -> if (apiKey.isBlank()) ClaudeMode.Web else ClaudeMode.Api
+        else -> claudeMode
+    }
     var claudeKeyboard by bool("claude_kb", true)
     var apiKey by PrefState(secure.getString("api_key", "") ?: "") { secure.edit().putString("api_key", it).apply() }
 

@@ -51,6 +51,9 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.OpenInBrowser
+import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -226,12 +229,18 @@ fun ClaudePanel(
     val accent = MaterialTheme.colorScheme.primary
     val focus = remember { FocusRequester() }
     val listState = rememberLazyListState()
-    val send = { sendChat(scope, chat, prefs, apps) { onLaunch(it, null) } }
+    val mode = prefs.effectiveClaudeMode()
+    val send = {
+        if (mode == ClaudeMode.App) {
+            if (ClaudeApp.send(ctx, chat.draft)) { chat.draft = ""; onClose() }
+        } else sendChat(scope, chat, prefs, apps) { onLaunch(it, null) }
+    }
+    BackHandler(enabled = mode == ClaudeMode.Web) { if (!ClaudeWeb.back()) onClose() }
 
     LaunchedEffect(seed) {
-        if (seed.isNotBlank()) { chat.draft = seed; send() }
+        if (seed.isNotBlank() && mode != ClaudeMode.Web) { chat.draft = seed; send() }
     }
-    LaunchedEffect(Unit) { if (prefs.claudeKeyboard && prefs.apiKey.isNotBlank()) runCatching { focus.requestFocus() } }
+    LaunchedEffect(Unit) { if (prefs.claudeKeyboard && mode != ClaudeMode.Web && (mode == ClaudeMode.App || prefs.apiKey.isNotBlank())) runCatching { focus.requestFocus() } }
     val lastLen = chat.messages.lastOrNull()?.text?.length ?: 0
     LaunchedEffect(chat.messages.size, lastLen / 40) {
         if (chat.messages.isNotEmpty()) listState.animateScrollToItem(chat.messages.size - 1)
@@ -283,13 +292,27 @@ fun ClaudePanel(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Claude", color = Smoke.pearl, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, letterSpacing = (-0.2).sp)
-                    Text(prefs.claudeModel, color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
+                    Text(
+                        when (mode) { ClaudeMode.Web -> "claude.ai · ο λογαριασμός σου"; ClaudeMode.App -> "Στέλνεται στην εφαρμογή Claude"; else -> prefs.claudeModel },
+                        color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp
+                    )
                 }
-                Icon(Icons.Rounded.EditNote, "Νέα συζήτηση", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.clip(CircleShape).clickable { chat.clear() }.padding(8.dp))
+                if (mode == ClaudeMode.Web) {
+                    Icon(Icons.Rounded.OpenInBrowser, "Άνοιγμα στον browser", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.clip(CircleShape).clickable { Actions.openUrl(ctx, ClaudeWeb.currentUrl() ?: "https://claude.ai") }.padding(8.dp))
+                }
+                if (mode == ClaudeMode.App) {
+                    Icon(Icons.Rounded.OpenInNew, "Άνοιγμα εφαρμογής", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.clip(CircleShape).clickable { ClaudeApp.open(ctx); onClose() }.padding(8.dp))
+                }
+                Icon(Icons.Rounded.EditNote, "Νέα συζήτηση", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.clip(CircleShape).clickable {
+                    if (mode == ClaudeMode.Web) ClaudeWeb.newChat(null) else chat.clear()
+                }.padding(8.dp))
                 Icon(Icons.Rounded.Close, "Κλείσιμο", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.clip(CircleShape).clickable { onClose() }.padding(8.dp))
             }
 
-            if (prefs.apiKey.isBlank()) {
+            if (mode == ClaudeMode.Web) {
+                ClaudeWebView(seed, Modifier.weight(1f).fillMaxWidth().padding(8.dp, 0.dp, 8.dp, 2.dp).clip(RoundedCornerShape(26.dp)))
+            } else {
+            if (mode == ClaudeMode.Api && prefs.apiKey.isBlank()) {
                 Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Rounded.Key, null, tint = accent, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(12.dp))
@@ -309,6 +332,7 @@ fun ClaudePanel(
                     if (chat.messages.isEmpty()) {
                         item {
                             Column(Modifier.fillMaxWidth().padding(top = 30.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (mode == ClaudeMode.App) Text("Γράψε και πατάς αποστολή: ανοίγει η εφαρμογή Claude με το μήνυμα.", color = Smoke.mist, fontSize = 13.sp, modifier = Modifier.padding(bottom = 12.dp))
                                 Text("Τι θέλεις να κάνουμε;", color = Smoke.pearl, fontSize = 26.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-0.6).sp)
                                 Spacer(Modifier.height(16.dp))
                                 listOf("Άνοιξε τις Ρυθμίσεις", "Γράψε μου ένα σύντομο μήνυμα για…", "Εξήγησέ μου απλά…", "Τι να μαγειρέψω απόψε;").forEach { s ->
@@ -382,7 +406,7 @@ fun ClaudePanel(
                         cursorBrush = SolidColor(accent),
                         maxLines = 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { if (prefs.apiKey.isNotBlank()) send() else matches.firstOrNull()?.let { onLaunch(it, null) } }),
+                        keyboardActions = KeyboardActions(onSend = { if (mode == ClaudeMode.App || prefs.apiKey.isNotBlank()) send() else matches.firstOrNull()?.let { onLaunch(it, null) } }),
                         modifier = Modifier.fillMaxWidth().focusRequester(focus)
                     )
                 }
@@ -402,6 +426,8 @@ fun ClaudePanel(
                         contentAlignment = Alignment.Center
                     ) { Icon(if (chat.busy) Icons.Rounded.Stop else Icons.Rounded.ArrowUpward, null, tint = Color.Black) }
                 }
+            }
+
             }
 
             // Λαβή: σύρε πάνω για κλείσιμο
