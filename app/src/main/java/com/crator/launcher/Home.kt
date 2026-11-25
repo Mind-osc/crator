@@ -169,7 +169,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
 
     val voiceLauncher = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
         val t = r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (r.resultCode == android.app.Activity.RESULT_OK && !t.isNullOrBlank()) openSearch(t)
+        if (r.resultCode == android.app.Activity.RESULT_OK && !t.isNullOrBlank()) { drawerSeed = t; drawerSearchMode = true; overlay = Overlay.Drawer }
     }
     fun startVoice() {
         val i = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
@@ -722,7 +722,7 @@ private fun Dock(
                 .then(if (hot) Modifier.border(1.dp, Color.White.copy(alpha = 0.45f), shape) else Modifier)
                 .padding(vertical = 10.dp, horizontal = 8.dp)
         ) {
-            if (prefs.searchPos == SearchPos.InDock) SearchPill(prefs, Modifier.padding(6.dp, 0.dp, 6.dp, 8.dp), onSearch)
+            if (prefs.searchPos == SearchPos.InDock) SearchPill(prefs, Modifier.padding(6.dp, 0.dp, 6.dp, 8.dp), onClick = onSearch)
             if (items.isEmpty()) {
                 Text("Σύρε εδώ εφαρμογές για το dock", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, modifier = Modifier.padding(12.dp))
             } else if (style == DockStyle.Carousel) {

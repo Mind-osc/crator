@@ -287,7 +287,7 @@ fun CratorWidget(
             }
         }
         "claude" -> Box(card, contentAlignment = Alignment.Center) {
-            SearchPill(prefs, Modifier.then(press), onClaude)
+            SearchPill(prefs, Modifier.then(press), onClick = onClaude)
         }
         "system" -> {
             val s by produceState(Triple(0f, 0f, 0)) {
