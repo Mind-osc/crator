@@ -467,7 +467,9 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                         Dashboard(
                             stats, prefs, repo,
                             active = pager.currentPage == 0 && overlay == Overlay.None && resumed,
-                            onOpenSettings = { openSettings(null) }
+                            onOpenSettings = { openSettings(null) },
+                            onClaude = { act(GestureAction.Claude) },
+                            onSearch = { openSearch() }
                         )
                     } else {
                         val idx = page - dashOffset

@@ -94,6 +94,40 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
+import androidx.compose.material.icons.rounded.Dashboard
+import androidx.compose.material.icons.rounded.Nfc
+import androidx.compose.material.icons.rounded.WifiTethering
+import androidx.compose.material.icons.rounded.AirplanemodeActive
+import androidx.compose.material.icons.rounded.DoNotDisturbOn
+import androidx.compose.material.icons.rounded.BatterySaver
+import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.VpnKey
+import androidx.compose.material.icons.rounded.Cast
+import androidx.compose.material.icons.rounded.Accessibility
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Calculate
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.Contacts
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Sms
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Shop
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Insights
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.CompositionLocalProvider
@@ -313,12 +347,109 @@ fun fmtUptime(ms: Long): String {
     return if (d > 0) "${d}μ ${h}ω ${mm}λ" else "${h}ω ${mm}λ"
 }
 
-private class Shortcut(val label: String, val icon: ImageVector, val run: () -> Unit)
+/** Συντόμευση ταμπλό: κάθε κουμπί είναι ξεχωριστό κομμάτι («sc:<id>» ή «app:<component>») */
+class DashAction(val id: String, val label: String, val icon: ImageVector, val run: (android.content.Context) -> Unit)
+
+/** Callbacks που χρειάζονται κάποιες συντομεύσεις */
+object DashHooks {
+    var openCrator: () -> Unit = {}
+    var openClaude: () -> Unit = {}
+    var openSearch: () -> Unit = {}
+    val torch = androidx.compose.runtime.mutableStateOf(false)
+}
+
+private fun sel(cat: String) = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, cat)
+
+val DASH_CATALOG: List<DashAction> = listOf(
+    DashAction("settings", "Ρυθμίσεις", Icons.Rounded.Settings) { Actions.settings(it, Settings.ACTION_SETTINGS) },
+    DashAction("wifi", "Wi-Fi", Icons.Rounded.Wifi) { Actions.settings(it, Settings.ACTION_WIFI_SETTINGS) },
+    DashAction("bluetooth", "Bluetooth", Icons.Rounded.Bluetooth) { Actions.settings(it, Settings.ACTION_BLUETOOTH_SETTINGS) },
+    DashAction("files", "Αρχεία", Icons.Rounded.Folder) { Actions.openFiles(it) },
+    DashAction("battery", "Μπαταρία", Icons.Rounded.BatteryChargingFull) { Actions.settings(it, Intent.ACTION_POWER_USAGE_SUMMARY) },
+    DashAction("display", "Οθόνη", Icons.Rounded.BrightnessMedium) { Actions.settings(it, Settings.ACTION_DISPLAY_SETTINGS) },
+    DashAction("sound", "Ήχος", Icons.Rounded.VolumeUp) { Actions.settings(it, Settings.ACTION_SOUND_SETTINGS) },
+    DashAction("storage", "Χώρος", Icons.Rounded.Storage) { Actions.settings(it, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) },
+    DashAction("apps", "Εφαρμογές", Icons.Rounded.Apps) { Actions.settings(it, Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS) },
+    DashAction("data", "Δεδομένα", Icons.Rounded.DataUsage) { Actions.settings(it, Settings.ACTION_DATA_USAGE_SETTINGS) },
+    DashAction("location", "Τοποθεσία", Icons.Rounded.LocationOn) { Actions.settings(it, Settings.ACTION_LOCATION_SOURCE_SETTINGS) },
+    DashAction("security", "Ασφάλεια", Icons.Rounded.Security) { Actions.settings(it, Settings.ACTION_SECURITY_SETTINGS) },
+    DashAction("notifications", "Ειδοποιήσεις", Icons.Rounded.Notifications) { Actions.expandStatusBar(it, false) },
+    DashAction("torch", "Φακός", Icons.Rounded.FlashlightOn) { DashHooks.torch.value = Actions.toggleTorch(it) },
+    DashAction("developer", "Developer", Icons.Rounded.DeveloperMode) { Actions.settings(it, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS) },
+    DashAction("crator", "Crator", Icons.Rounded.Tune) { DashHooks.openCrator() },
+    // επιπλέον, για προσθήκη από το +
+    DashAction("quick", "Γρήγορες ρυθμ.", Icons.Rounded.Dashboard) { Actions.expandStatusBar(it, true) },
+    DashAction("nfc", "NFC", Icons.Rounded.Nfc) { Actions.settings(it, Settings.ACTION_NFC_SETTINGS) },
+    DashAction("hotspot", "Hotspot", Icons.Rounded.WifiTethering) { Actions.settings(it, Settings.ACTION_WIRELESS_SETTINGS) },
+    DashAction("airplane", "Πτήση", Icons.Rounded.AirplanemodeActive) { Actions.settings(it, Settings.ACTION_AIRPLANE_MODE_SETTINGS) },
+    DashAction("dnd", "Μην ενοχλείτε", Icons.Rounded.DoNotDisturbOn) { Actions.settings(it, Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS) },
+    DashAction("saver", "Εξοικονόμηση", Icons.Rounded.BatterySaver) { Actions.settings(it, Settings.ACTION_BATTERY_SAVER_SETTINGS) },
+    DashAction("night", "Νυχτερινό φως", Icons.Rounded.DarkMode) { Actions.settings(it, Settings.ACTION_NIGHT_DISPLAY_SETTINGS) },
+    DashAction("vpn", "VPN", Icons.Rounded.VpnKey) { Actions.settings(it, Settings.ACTION_VPN_SETTINGS) },
+    DashAction("cast", "Προβολή", Icons.Rounded.Cast) { Actions.settings(it, Settings.ACTION_CAST_SETTINGS) },
+    DashAction("accessibility", "Προσβασιμότητα", Icons.Rounded.Accessibility) { Actions.settings(it, Settings.ACTION_ACCESSIBILITY_SETTINGS) },
+    DashAction("language", "Γλώσσα", Icons.Rounded.Language) { Actions.settings(it, Settings.ACTION_LOCALE_SETTINGS) },
+    DashAction("keyboard", "Πληκτρολόγιο", Icons.Rounded.Keyboard) { Actions.settings(it, Settings.ACTION_INPUT_METHOD_SETTINGS) },
+    DashAction("datetime", "Ώρα", Icons.Rounded.Schedule) { Actions.settings(it, Settings.ACTION_DATE_SETTINGS) },
+    DashAction("wallpaper", "Ταπετσαρία", Icons.Rounded.Wallpaper) { Actions.start(it, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Ταπετσαρία")) },
+    DashAction("camera", "Κάμερα", Icons.Rounded.PhotoCamera) { Actions.start(it, Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)) },
+    DashAction("alarm", "Ξυπνητήρι", Icons.Rounded.Alarm) { Actions.start(it, Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS)) },
+    DashAction("timer", "Χρονόμετρο", Icons.Rounded.Timer) { Actions.start(it, Intent(android.provider.AlarmClock.ACTION_SHOW_TIMERS)) },
+    DashAction("calculator", "Αριθμομηχανή", Icons.Rounded.Calculate) { Actions.start(it, sel(Intent.CATEGORY_APP_CALCULATOR)) },
+    DashAction("calendar", "Ημερολόγιο", Icons.Rounded.Event) { Actions.start(it, sel(Intent.CATEGORY_APP_CALENDAR)) },
+    DashAction("contacts", "Επαφές", Icons.Rounded.Contacts) { Actions.start(it, sel(Intent.CATEGORY_APP_CONTACTS)) },
+    DashAction("phone", "Τηλέφωνο", Icons.Rounded.Call) { Actions.start(it, Intent(Intent.ACTION_DIAL)) },
+    DashAction("messages", "Μηνύματα", Icons.Rounded.Sms) { Actions.start(it, sel(Intent.CATEGORY_APP_MESSAGING)) },
+    DashAction("browser", "Browser", Icons.Rounded.Public) { Actions.start(it, sel(Intent.CATEGORY_APP_BROWSER)) },
+    DashAction("maps", "Χάρτες", Icons.Rounded.Map) { Actions.start(it, sel(Intent.CATEGORY_APP_MAPS)) },
+    DashAction("music", "Μουσική", Icons.Rounded.MusicNote) { Actions.start(it, sel(Intent.CATEGORY_APP_MUSIC)) },
+    DashAction("email", "Email", Icons.Rounded.Email) { Actions.start(it, sel(Intent.CATEGORY_APP_EMAIL)) },
+    DashAction("gallery", "Φωτογραφίες", Icons.Rounded.PhotoLibrary) { Actions.start(it, sel(Intent.CATEGORY_APP_GALLERY)) },
+    DashAction("store", "Play Store", Icons.Rounded.Shop) { Actions.openUrl(it, "market://search?q=") },
+    DashAction("claude", "Claude", Icons.Rounded.AutoAwesome) { DashHooks.openClaude() },
+    DashAction("search", "Αναζήτηση", Icons.Rounded.Search) { DashHooks.openSearch() }
+)
+private val CATALOG_BY_ID = DASH_CATALOG.associateBy { it.id }
+private val DEFAULT_SC = DASH_CATALOG.take(16).map { "sc:${it.id}" }
+
+val DASH_INFO = listOf(
+    "cpu" to "CPU", "ram" to "RAM", "storage" to "Χώρος", "net" to "Δίκτυο",
+    "battery" to "Μπαταρία", "thermal" to "Θερμικά"
+)
+val DASH_DEFAULT_ITEMS = listOf("cpu", "net", "battery", "thermal") + DEFAULT_SC + listOf("ram", "storage")
+
+/** Λίστα στοιχείων του ταμπλό (με μεταφορά από τις παλιές ρυθμίσεις) */
+fun Prefs.dashItemsFull(): List<String> {
+    if (dashItems.isNotEmpty()) return dashItems
+    if (dashOrder.isEmpty() && dashHiddenShortcuts.isEmpty()) return DASH_DEFAULT_ITEMS
+    val out = mutableListOf<String>()
+    val oldOrder = dashOrder.ifEmpty { listOf("shortcuts", "cpu", "ram", "storage", "net", "battery", "thermal") }
+    val all = (oldOrder + listOf("cpu", "ram", "storage", "net", "battery", "thermal", "shortcuts")).distinct()
+    val oldLabels = DASH_CATALOG.take(16)
+    for (u in all) when (u) {
+        "shortcuts" -> if (dashShortcuts) oldLabels.filter { it.label !in dashHiddenShortcuts }.forEach { out += "sc:${it.id}" }
+        "cpu" -> if (dashCpu) out += u
+        "ram", "mem" -> if (dashMem && "ram" !in out) out += "ram"
+        "storage" -> if (dashStorage) out += u
+        "net" -> if (dashNet) out += u
+        "battery" -> if (dashBattery) out += u
+        "thermal" -> if (dashThermal) out += u
+    }
+    return out.distinct()
+}
+
+private fun isButton(id: String) = id.startsWith("sc:") || id.startsWith("app:")
 
 @Composable
-fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolean, onOpenSettings: () -> Unit) {
+fun Dashboard(
+    stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolean,
+    onOpenSettings: () -> Unit, onClaude: () -> Unit = {}, onSearch: () -> Unit = {}
+) {
     val ctx = LocalContext.current
     val accent = MaterialTheme.colorScheme.primary
+    DashHooks.openCrator = onOpenSettings
+    DashHooks.openClaude = onClaude
+    DashHooks.openSearch = onSearch
 
     // Ξεκινάει μόνο όταν η σελίδα είναι ενεργή, σταματάει αμέσως μόλις φύγεις
     LaunchedEffect(active, prefs.dashRefresh, prefs.dashHistory) {
@@ -330,70 +461,60 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
     }
 
-    var torch by remember { mutableStateOf(false) }
-    val shortcuts = listOf(
-        Shortcut("Ρυθμίσεις", Icons.Rounded.Settings) { Actions.settings(ctx, Settings.ACTION_SETTINGS) },
-        Shortcut("Wi-Fi", Icons.Rounded.Wifi) { Actions.settings(ctx, Settings.ACTION_WIFI_SETTINGS) },
-        Shortcut("Bluetooth", Icons.Rounded.Bluetooth) { Actions.settings(ctx, Settings.ACTION_BLUETOOTH_SETTINGS) },
-        Shortcut("Αρχεία", Icons.Rounded.Folder) { Actions.openFiles(ctx) },
-        Shortcut("Μπαταρία", Icons.Rounded.BatteryChargingFull) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) },
-        Shortcut("Οθόνη", Icons.Rounded.BrightnessMedium) { Actions.settings(ctx, Settings.ACTION_DISPLAY_SETTINGS) },
-        Shortcut("Ήχος", Icons.Rounded.VolumeUp) { Actions.settings(ctx, Settings.ACTION_SOUND_SETTINGS) },
-        Shortcut("Χώρος", Icons.Rounded.Storage) { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) },
-        Shortcut("Εφαρμογές", Icons.Rounded.Apps) { Actions.settings(ctx, Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS) },
-        Shortcut("Δεδομένα", Icons.Rounded.DataUsage) { Actions.settings(ctx, Settings.ACTION_DATA_USAGE_SETTINGS) },
-        Shortcut("Τοποθεσία", Icons.Rounded.LocationOn) { Actions.settings(ctx, Settings.ACTION_LOCATION_SOURCE_SETTINGS) },
-        Shortcut("Ασφάλεια", Icons.Rounded.Security) { Actions.settings(ctx, Settings.ACTION_SECURITY_SETTINGS) },
-        Shortcut("Ειδοποιήσεις", Icons.Rounded.Notifications) { Actions.expandStatusBar(ctx, false) },
-        Shortcut("Φακός", Icons.Rounded.FlashlightOn) { torch = Actions.toggleTorch(ctx) },
-        Shortcut("Developer", Icons.Rounded.DeveloperMode) { Actions.settings(ctx, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS) },
-        Shortcut("Crator", Icons.Rounded.Tune) { onOpenSettings() }
-    )
-
+    val torch by DashHooks.torch
     var editTitle by remember { mutableStateOf(false) }
     val d = LocalDensity.current
-    val visibleShortcuts = shortcuts.filter { it.label !in prefs.dashHiddenShortcuts }
+    val byKey = repo.apps.value.associateBy { it.key }
 
-    // ----- Λειτουργία επεξεργασίας: ✕ για απόκρυψη, + για προσθήκη, σύρσιμο για σειρά -----
+    // ----- Επεξεργασία: ✕ σε κάθε κομμάτι, + για προσθήκη, σύρσιμο για σειρά -----
     var editMode by remember { mutableStateOf(false) }
     var addMenu by remember { mutableStateOf(false) }
-    BackHandler(enabled = editMode) { editMode = false; addMenu = false }
-    LaunchedEffect(active) { if (!active) { editMode = false; addMenu = false } }
-    val order = prefs.dashOrderFull()
+    var appPick by remember { mutableStateOf(false) }
+    BackHandler(enabled = editMode) { if (addMenu) { addMenu = false; appPick = false } else editMode = false }
+    LaunchedEffect(active) { if (!active) { editMode = false; addMenu = false; appPick = false } }
+    val items = prefs.dashItemsFull().filter { !it.startsWith("app:") || byKey.containsKey(it.removePrefix("app:")) }
     var draggingId by remember { mutableStateOf<String?>(null) }
-    var live by remember { mutableStateOf(order) }
-    if (draggingId == null && live != order) live = order
-    val visible = live.filter { prefs.dashEnabled(it) && (it != "shortcuts" || visibleShortcuts.isNotEmpty()) }
-    var dragY by remember { mutableFloatStateOf(0f) }
-    val heights = remember { mutableStateMapOf<String, Int>() }
-    val hidden = DASH_UNITS.filter { !prefs.dashEnabled(it.first) }
-    val editScale by animateFloatAsState(if (editMode) 0.97f else 1f, Motion.lively(Motion.sheet), label = "edit")
+    var live by remember { mutableStateOf(items) }
+    if (draggingId == null && live != items) live = items
+    val editScale by animateFloatAsState(if (editMode) 0.96f else 1f, Motion.lively(Motion.sheet), label = "edit")
+
+    fun remove(id: String) { prefs.dashItems = prefs.dashItemsFull() - id }
+    fun add(id: String) { if (id !in prefs.dashItemsFull()) prefs.dashItems = prefs.dashItemsFull() + id }
+
+    @Composable
+    fun button(id: String, mod: Modifier) {
+        val (tc, ta) = LocalDashStyle.current
+        val app = if (id.startsWith("app:")) byKey[id.removePrefix("app:")] else null
+        val act = if (id.startsWith("sc:")) CATALOG_BY_ID[id.removePrefix("sc:")] else null
+        val on = act?.id == "torch" && torch
+        Column(
+            mod.smokedGlass(RoundedCornerShape(22.dp), alpha = if (on) 0.9f else ta, tint = if (on) accent else tc)
+                .clickable(enabled = !editMode) {
+                    when {
+                        app != null -> Actions.launch(ctx as android.app.Activity, app, null, prefs.openAnim)
+                        act != null -> act.run(ctx)
+                    }
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            when {
+                app != null -> AppIcon(app, 30.dp, prefs)
+                act != null -> Icon(act.icon, null, tint = if (on) Color.Black else Smoke.pearl, modifier = Modifier.size(28.dp))
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                app?.label ?: act?.label ?: "", color = if (on) Color.Black else Smoke.pearl.copy(alpha = 0.85f),
+                fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+    }
 
     @Composable
     fun unit(id: String, mod: Modifier) {
+        if (isButton(id)) { button(id, mod); return }
         when (id) {
-            "shortcuts" -> Column(mod, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                visibleShortcuts.chunked(4).forEach { row ->
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        row.forEach { s ->
-                            val on = s.label == "Φακός" && torch
-                            val (tc, ta) = LocalDashStyle.current
-                            Column(
-                                Modifier.weight(1f).fillMaxHeight()
-                                    .smokedGlass(RoundedCornerShape(22.dp), alpha = if (on) 0.9f else ta, tint = if (on) accent else tc)
-                                    .clickable(enabled = !editMode) { s.run() },
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Icon(s.icon, null, tint = if (on) Color.Black else Smoke.pearl, modifier = Modifier.size(28.dp))
-                                Spacer(Modifier.height(6.dp))
-                                Text(s.label, color = if (on) Color.Black else Smoke.pearl.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                            }
-                        }
-                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
-                    }
-                }
-            }
             "cpu" -> Card(mod) {
                 Header("CPU", "%.0f%%".format(stats.cpuPct), accent)
                 Sub("${stats.cores.size} πυρήνες" + if (stats.cpuIsFreq) ", συχνότητα" else "")
@@ -478,8 +599,8 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                 exit = androidx.compose.animation.scaleOut() + androidx.compose.animation.fadeOut()
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (hidden.isNotEmpty()) Box(
-                        Modifier.size(40.dp).smokedGlass(CircleShape, alpha = 0.6f, tint = accent).clickable { addMenu = !addMenu },
+                    Box(
+                        Modifier.size(40.dp).smokedGlass(CircleShape, alpha = 0.6f, tint = accent).clickable { addMenu = !addMenu; appPick = false },
                         contentAlignment = Alignment.Center
                     ) { Icon(Icons.Rounded.Add, "Προσθήκη", tint = Smoke.pearl) }
                     Spacer(Modifier.width(8.dp))
@@ -491,22 +612,18 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
             }
         }
 
-        // Πλέγμα: μικρά tiles σε δύο στήλες, οι συντομεύσεις σε όλο το πλάτος
-        val rows = mutableListOf<List<String>>()
-        var pending: String? = null
-        for (id in visible) {
-            if (id == "shortcuts") {
-                pending?.let { rows += listOf(it) }; pending = null
-                rows += listOf(id)
-            } else if (pending == null) pending = id
-            else { rows += listOf(pending!!, id); pending = null }
+        // Γραμμές: κάρτες ανά 2, κουμπιά ανά 4, με τη σειρά που τα έχεις βάλει
+        val rows = mutableListOf<MutableList<String>>()
+        for (id in live) {
+            val cap = if (isButton(id)) 4 else 2
+            val last = rows.lastOrNull()
+            if (last != null && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
         }
-        pending?.let { rows += listOf(it) }
 
         @Composable
         fun cell(id: String, mod: Modifier) = androidx.compose.runtime.key(id) {
             val isDrag = draggingId == id
-            val lift by animateFloatAsState(if (isDrag) 1.05f else 1f, Motion.pop(Motion.drag), label = "lift")
+            val lift by animateFloatAsState(if (isDrag) 1.06f else 1f, Motion.pop(Motion.drag), label = "lift")
             Box(
                 mod
                     .onGloballyPositioned { c -> container?.let { if (it.isAttached && c.isAttached) slots[id] = it.localBoundingBoxOf(c) } }
@@ -524,8 +641,8 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                         Modifier.matchParentSize().pointerInput(id) {
                             detectDragGestures(
                                 onDragStart = { draggingId = id; dragOff = androidx.compose.ui.geometry.Offset.Zero },
-                                onDragEnd = { prefs.dashOrder = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero },
-                                onDragCancel = { prefs.dashOrder = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero }
+                                onDragEnd = { prefs.dashItems = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero },
+                                onDragCancel = { prefs.dashItems = live; draggingId = null; dragOff = androidx.compose.ui.geometry.Offset.Zero }
                             ) { c, amount ->
                                 c.consume()
                                 dragOff += amount
@@ -533,60 +650,110 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                                 val center = mine.center + dragOff
                                 val now = System.currentTimeMillis()
                                 if (now - lastSwap < 160) return@detectDragGestures
-                                val hit = slots.entries.firstOrNull { (k, r) -> k != id && k in live && prefs.dashEnabled(k) && r.contains(center) }
+                                val hit = slots.entries.firstOrNull { (k, r) -> k != id && k in live && r.contains(center) }
                                 if (hit != null) {
-                                    live = live.toMutableList().also { l -> val x = l.indexOf(id); val y = l.indexOf(hit.key); l[x] = hit.key; l[y] = id }
+                                    // μετακίνηση στη θέση του άλλου (τα υπόλοιπα κυλάνε μία θέση)
+                                    val from = live.indexOf(id); val to = live.indexOf(hit.key)
+                                    live = live.toMutableList().also { l -> l.removeAt(from); l.add(to, id) }
                                     dragOff -= (hit.value.center - mine.center)
                                     lastSwap = now
                                 }
                             }
                         }
                     )
+                    val xs = if (isButton(id)) 22.dp else 26.dp
                     Box(
-                        Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).size(26.dp)
+                        Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).size(xs)
                             .smokedGlass(CircleShape, alpha = 0.9f, tint = Smoke.danger)
-                            .clickable { prefs.setDashEnabled(id, false) },
+                            .clickable { remove(id) },
                         contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(14.dp)) }
+                    ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(xs * 0.55f)) }
                 }
             }
         }
 
-        // Γεμίζει ακριβώς την οθόνη: γραμμές με tiles = 1 μερίδα, κάθε γραμμή κουμπιών = 0,62
-        val scRows = ((visibleShortcuts.size + 3) / 4).coerceAtLeast(1)
+        // Γεμίζει ακριβώς την οθόνη: γραμμή καρτών = 1 μερίδα, γραμμή κουμπιών = 0,62
         Column(
             Modifier.fillMaxWidth().weight(1f).onGloballyPositioned { container = it },
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             rows.forEach { row ->
-                if (row.size == 1 && row[0] == "shortcuts") cell("shortcuts", Modifier.fillMaxWidth().weight(scRows * 0.62f))
-                else Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val btn = isButton(row[0])
+                Row(Modifier.fillMaxWidth().weight(if (btn) 0.62f else 1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEach { id -> cell(id, Modifier.weight(1f).fillMaxHeight()) }
-                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                    repeat((if (btn) 4 else 2) - row.size) { Spacer(Modifier.weight(1f)) }
                 }
+            }
+            if (rows.isEmpty()) Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text("Άδειο ταμπλό. Πάτα + για να προσθέσεις.", color = Smoke.mist, fontSize = 13.sp)
             }
         }
     }
 
-    // Μενού «+»: όσες κάρτες έχουν αφαιρεθεί
+    // Μενού «+»: κάρτες, συντομεύσεις και εφαρμογές που δεν υπάρχουν ήδη
+    if (addMenu && editMode) Box(
+        Modifier.fillMaxSize().clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { addMenu = false; appPick = false }
+    )
     androidx.compose.animation.AnimatedVisibility(
-        addMenu && editMode && hidden.isNotEmpty(),
-        modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp),
+        addMenu && editMode,
+        modifier = Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 10.dp),
         enter = androidx.compose.animation.scaleIn(Motion.lively(Motion.sheet), 0.6f, androidx.compose.ui.graphics.TransformOrigin(1f, 0f)) + androidx.compose.animation.fadeIn(),
         exit = androidx.compose.animation.scaleOut(Motion.snappy(Motion.sheet), 0.8f, androidx.compose.ui.graphics.TransformOrigin(1f, 0f)) + androidx.compose.animation.fadeOut()
     ) {
-        Column(Modifier.widthIn(min = 180.dp).smokedGlass(RoundedCornerShape(22.dp), alpha = 0.8f).padding(6.dp)) {
-            hidden.forEach { (uid, name) ->
-                Row(
-                    Modifier.clip(RoundedCornerShape(16.dp)).clickable {
-                        prefs.setDashEnabled(uid, true)
-                        if (DASH_UNITS.count { !prefs.dashEnabled(it.first) } == 0) addMenu = false
-                    }.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.Add, null, tint = accent, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(name, color = Smoke.pearl, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        val current = prefs.dashItemsFull()
+        Column(
+            Modifier.width(290.dp).heightIn(max = 520.dp)
+                .shadow(30.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color.Black)
+                .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.82f)
+                .padding(10.dp)
+        ) {
+            if (appPick) {
+                var q by remember { mutableStateOf("") }
+                SearchField(prefs, q, { q = it }, "Αναζήτηση εφαρμογής", null, onGo = {})
+                Spacer(Modifier.height(6.dp))
+                val nq = q.norm().trim()
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 440.dp)) {
+                    items(repo.apps.value.filter { "app:${it.key}" !in current && (nq.isEmpty() || it.label.norm().contains(nq)) }, key = { it.key }) { a ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { add("app:${a.key}") }.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AppIcon(a, 30.dp, prefs)
+                            Spacer(Modifier.width(12.dp))
+                            Text(a.label, color = Smoke.pearl, fontSize = 14.sp, maxLines = 1)
+                        }
+                    }
+                }
+            } else {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    val info = DASH_INFO.filter { it.first !in current }
+                    if (info.isNotEmpty()) {
+                        MenuTitle("Κάρτες")
+                        info.forEach { (id, name) -> AddRow(Icons.Rounded.Insights, name, accent) { add(id) } }
+                    }
+                    MenuTitle("Εφαρμογή ως κουμπί")
+                    AddRow(Icons.Rounded.Apps, "Διάλεξε εφαρμογή…", accent) { appPick = true }
+                    val sc = DASH_CATALOG.filter { "sc:${it.id}" !in current }
+                    if (sc.isNotEmpty()) {
+                        MenuTitle("Συντομεύσεις")
+                        sc.chunked(3).forEach { row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                row.forEach { a ->
+                                    Column(
+                                        Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.06f))
+                                            .clickable { add("sc:${a.id}") }.padding(vertical = 10.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(a.icon, null, tint = Smoke.pearl, modifier = Modifier.size(22.dp))
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(a.label, color = Smoke.mist, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    }
+                                }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
                 }
             }
         }
@@ -596,34 +763,24 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
     if (editTitle) RenameDialog(prefs.dashTitle, { editTitle = false }) { prefs.dashTitle = it }
 }
 
-val DASH_UNITS = listOf(
-    "cpu" to "CPU", "ram" to "RAM", "storage" to "Χώρος", "net" to "Δίκτυο",
-    "battery" to "Μπαταρία", "thermal" to "Θερμικά", "shortcuts" to "Συντομεύσεις"
-)
+@Composable
+private fun MenuTitle(t: String) =
+    Text(t, color = Smoke.mist, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(8.dp, 10.dp, 8.dp, 6.dp))
 
-fun Prefs.dashEnabled(id: String): Boolean = when (id) {
-    "shortcuts" -> dashShortcuts; "cpu" -> dashCpu; "ram" -> dashMem; "storage" -> dashStorage
-    "net" -> dashNet; "battery" -> dashBattery; "thermal" -> dashThermal; else -> false
-}
-
-fun Prefs.setDashEnabled(id: String, v: Boolean) {
-    when (id) {
-        "shortcuts" -> dashShortcuts = v; "cpu" -> dashCpu = v; "ram" -> dashMem = v; "storage" -> dashStorage = v
-        "net" -> dashNet = v; "battery" -> dashBattery = v; "thermal" -> dashThermal = v
+@Composable
+private fun AddRow(icon: ImageVector, name: String, accent: Color, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = accent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(name, color = Smoke.pearl, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
-}
-
-fun Prefs.dashOrderFull(): List<String> {
-    val ids = DASH_UNITS.map { it.first }
-    return dashOrder.filter { it in ids }.distinct() + ids.filter { it !in dashOrder }
 }
 
 private val LocalDashStyle = androidx.compose.runtime.compositionLocalOf { Smoke.tint to 0.58f }
 
-val DASH_SHORTCUTS = listOf(
-    "Ρυθμίσεις", "Wi-Fi", "Bluetooth", "Αρχεία", "Μπαταρία", "Οθόνη", "Ήχος", "Χώρος",
-    "Εφαρμογές", "Δεδομένα", "Τοποθεσία", "Ασφάλεια", "Ειδοποιήσεις", "Φακός", "Developer", "Crator"
-)
 
 @Composable
 private fun Card(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {

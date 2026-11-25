@@ -225,6 +225,7 @@ class Prefs(private val context: Context) {
     var dashBattery by bool("dash_bat", true)
     var dashThermal by bool("dash_thermal", true)
     var dashOrder by PrefState(loadList("dash_order")) { saveList("dash_order", it) }
+    var dashItems by PrefState(loadList("dash_items")) { saveList("dash_items", it) }
     var dashHiddenShortcuts by PrefState(loadList("dash_hidden_sc").toSet()) { saveList("dash_hidden_sc", it.toList()) }
 
     // ---------- Widgets ----------

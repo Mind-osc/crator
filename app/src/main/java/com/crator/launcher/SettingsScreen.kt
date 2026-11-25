@@ -488,22 +488,8 @@ private fun DashSection(p: Prefs) {
     ColorPref("Χρώμα καρτών", p.dashColor) { p.dashColor = it }
     SliderPref("Αδιαφάνεια καρτών", p.dashOpacity, 0..100, "%") { p.dashOpacity = it }
     Group("Περιεχόμενο")
-    SwitchPref("Συντομεύσεις", p.dashShortcuts) { p.dashShortcuts = it }
-    SwitchPref("CPU", p.dashCpu) { p.dashCpu = it }
-    SwitchPref("RAM", p.dashMem) { p.dashMem = it }
-    SwitchPref("Χώρος", p.dashStorage) { p.dashStorage = it }
-    SwitchPref("Δίκτυο", p.dashNet) { p.dashNet = it }
-    SwitchPref("Μπαταρία", p.dashBattery) { p.dashBattery = it }
-    SwitchPref("Θερμική κατάσταση", p.dashThermal) { p.dashThermal = it }
-    if (p.dashShortcuts) {
-        Group("Ποιες συντομεύσεις")
-        DASH_SHORTCUTS.forEach { name ->
-            SwitchPref(name, name !in p.dashHiddenShortcuts) { on ->
-                p.dashHiddenShortcuts = if (on) p.dashHiddenShortcuts - name else p.dashHiddenShortcuts + name
-            }
-        }
-    }
-    Text("Οι μετρήσεις τρέχουν μόνο όσο βλέπεις τη σελίδα· μόλις φύγεις σταματούν για εξοικονόμηση μπαταρίας.", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp))
+    Text("Πάτα παρατεταμένα οποιαδήποτε κάρτα ή κουμπί στο ταμπλό: ✕ για αφαίρεση, σύρσιμο για αλλαγή θέσης, + για νέες κάρτες, συντομεύσεις και εφαρμογές.", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp))
+    TextButton(onClick = { p.dashItems = DASH_DEFAULT_ITEMS }) { Text("Επαναφορά προεπιλογής") }
 }
 
 @Composable
