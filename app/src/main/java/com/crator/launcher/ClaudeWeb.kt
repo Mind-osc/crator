@@ -31,8 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import java.net.URLEncoder
 
 /** Το claude.ai μέσα στο Crator, με τον λογαριασμό του χρήστη (χωρίς API key). */
@@ -60,9 +58,7 @@ object ClaudeWeb {
             // Χωρίς το «; wv» για να το βλέπουν οι σελίδες σύνδεσης σαν κανονικό Chrome
             userAgentString = userAgentString.replace("; wv", "")
         }
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
-            runCatching { WebSettingsCompat.setAlgorithmicDarkening(wv.settings, true) }
-        }
+        if (android.os.Build.VERSION.SDK_INT >= 33) runCatching { wv.settings.isAlgorithmicDarkeningAllowed = true }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
         wv.webViewClient = object : WebViewClient() {
