@@ -43,6 +43,8 @@ import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Colorize
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.rounded.Dock
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Gesture
@@ -221,13 +223,26 @@ private val SWATCHES = listOf(
 
 @Composable
 fun ColorPref(title: String, color: Int, onChange: (Int) -> Unit) {
+    var picking by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp, horizontal = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, color = Color.White, fontSize = 15.sp, modifier = Modifier.weight(1f))
-            Box(Modifier.size(22.dp).clip(CircleShape).background(Color(color)).border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape))
+            Text("#" + String.format("%06X", color and 0xFFFFFF), color = Smoke.mist, fontSize = 12.sp)
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.size(24.dp).clip(CircleShape).background(Color(color)).border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape).clickable { picking = true })
         }
         Spacer(Modifier.height(6.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                // Ελεύθερη επιλογή: ακριβώς το χρώμα που θέλεις
+                Box(
+                    Modifier.size(32.dp).clip(CircleShape)
+                        .background(Brush.sweepGradient((0..6).map { Color.hsv(it * 60f % 360f, 0.8f, 1f) }))
+                        .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                        .clickable { picking = true },
+                    contentAlignment = Alignment.Center
+                ) { Icon(Icons.Rounded.Colorize, "Ακριβές χρώμα", tint = Color.White, modifier = Modifier.size(16.dp)) }
+            }
             items(SWATCHES) { c ->
                 Box(
                     Modifier.size(32.dp).clip(CircleShape).background(Color(c))
@@ -236,12 +251,8 @@ fun ColorPref(title: String, color: Int, onChange: (Int) -> Unit) {
                 )
             }
         }
-        // Απόχρωση (hue) για ελεύθερη επιλογή
-        var hue by remember { mutableFloatStateOf(0f) }
-        Slider(value = hue, onValueChange = { hue = it }, onValueChangeFinished = {
-            onChange(Color.hsv(hue, 0.55f, 1f).toArgb())
-        }, valueRange = 0f..360f)
     }
+    if (picking) ColorPickerDialog(color, { picking = false }) { onChange(it) }
 }
 
 // ---------------- Ενότητες ----------------

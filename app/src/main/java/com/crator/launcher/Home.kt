@@ -125,6 +125,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     var homeMenu by remember { mutableStateOf(false) }
     var pickerPkg by remember { mutableStateOf<String?>(null) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
+    var barH by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
     var popupAnchor by remember { mutableStateOf(Offset.Zero) }
     var folderAnchor by remember { mutableStateOf(Offset.Zero) }
     var popupCtx by remember { mutableStateOf(PopupCtx()) }
@@ -452,8 +454,9 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 .navigationBarsPadding()
         ) {
             if (prefs.searchPos == SearchPos.Top && !onDashboard) SearchPill(prefs, Modifier.padding(16.dp, 8.dp), onVoice = { startVoice() }) { openSearch() }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             HorizontalPager(
-                state = pager, modifier = Modifier.weight(1f), userScrollEnabled = !drag.active,
+                state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = !drag.active,
                 flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
                     state = pager,
                     snapAnimationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.86f, stiffness = 400f * Motion.speed * Motion.page * Motion.speed * Motion.page)
@@ -480,11 +483,25 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                             },
                             onFolder = ::openFolder,
                             onClaude = { openSearch() },
-                            onSettings = ::openSettings
+                            onSettings = ::openSettings,
+                            bottomPad = barH
                         )
                     }
                 }
             }
+            // Κάτω μπάρα (τελείες, αναζήτηση, dock): γλιστράει έξω όσο πηγαίνεις στο ταμπλό
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { barH = with(density) { it.height.toDp() } }
+                    .graphicsLayer {
+                        val pos = pager.currentPage + pager.currentPageOffsetFraction
+                        val d = if (prefs.dashboardEnabled) (1f - pos).coerceIn(0f, 1f) else 0f
+                        translationY = d * (size.height + 40f)
+                        alpha = 1f - d
+                    }
+            ) {
             if (prefs.pageIndicator) PageIndicator(pager, prefs.dashboardEnabled)
             if (prefs.searchPos == SearchPos.AboveDock) SearchPill(prefs, Modifier.padding(horizontal = 20.dp, vertical = 6.dp), onVoice = { startVoice() }) { openSearch() }
             Dock(
@@ -497,6 +514,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 },
                 onSearch = { openSearch() }
             )
+            }
+            }
         }
 
         androidx.compose.animation.AnimatedVisibility(overlay != Overlay.None, enter = fadeIn(tween(dur(220))), exit = fadeOut(tween(dur(220)))) {
@@ -619,7 +638,8 @@ private fun HomePage(
     onItemLong: (Int, String) -> Unit,
     onFolder: (String, android.graphics.Rect?) -> Unit,
     onClaude: () -> Unit,
-    onSettings: (String?) -> Unit
+    onSettings: (String?) -> Unit,
+    bottomPad: androidx.compose.ui.unit.Dp = 0.dp
 ) {
     val items = prefs.pages.getOrNull(index) ?: emptyMap()
     // στόχος φακέλου: εικονίδιο πάνω στο οποίο αιωρείται μια εφαρμογή
@@ -691,6 +711,7 @@ private fun HomePage(
                 }
             } }
         }
+        Spacer(Modifier.height(bottomPad))
     }
 }
 

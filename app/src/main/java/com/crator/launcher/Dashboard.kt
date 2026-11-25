@@ -341,14 +341,11 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         LocalDensity provides Density(d.density * prefs.dashScale / 100f, d.fontScale),
         LocalDashStyle provides (Color(prefs.dashColor) to prefs.dashOpacity / 100f)
     ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    FitToHeight(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
         // Κεφαλίδα: παρατεταμένο πάτημα για αλλαγή τίτλου / απόκρυψη υπότιτλου
-        Column(Modifier.padding(6.dp, 8.dp)) {
+        Column(Modifier.padding(6.dp, 4.dp)) {
             Text(
-                prefs.dashTitle.ifEmpty { " " }, color = Smoke.pearl, fontSize = 34.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp,
+                prefs.dashTitle.ifEmpty { " " }, color = Smoke.pearl, fontSize = 30.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp,
                 modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { editTitle = true })
             )
             if (prefs.dashShowSub) Text(
@@ -367,16 +364,16 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { s ->
                         Column(
-                            Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { s.run() }.padding(vertical = 8.dp),
+                            Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).clickable { s.run() }.padding(vertical = 4.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             val on = s.label == "Φακός" && torch
                             Box(
-                                Modifier.size(44.dp).clip(CircleShape).background(if (on) accent else Color.White.copy(alpha = 0.09f)),
+                                Modifier.size(38.dp).clip(CircleShape).background(if (on) accent else Color.White.copy(alpha = 0.09f)),
                                 contentAlignment = Alignment.Center
-                            ) { Icon(s.icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(22.dp)) }
-                            Spacer(Modifier.height(4.dp))
-                            Text(s.label, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1)
+                            ) { Icon(s.icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(19.dp)) }
+                            Spacer(Modifier.height(3.dp))
+                            Text(s.label, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1)
                         }
                     }
                 }
@@ -388,13 +385,13 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
             Header(if (stats.cpuIsFreq) "CPU · συχνότητα" else "CPU · φόρτος", "%.0f%%".format(stats.cpuPct), accent)
             val soc = if (Build.VERSION.SDK_INT >= 31) "${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL}".trim() else Build.HARDWARE
             Sub("$soc · ${stats.cores.size} πυρήνες")
-            LineChart(stats.cpuHist, 100f, accent)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().height(46.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+            LineChart(stats.cpuHist, 100f, accent, height = 52)
+            Spacer(Modifier.height(6.dp))
+            Row(Modifier.fillMaxWidth().height(36.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
                 stats.cores.forEach { (cur, max) ->
                     val f = if (max > 0) (cur.toFloat() / max).coerceIn(0.02f, 1f) else 0.02f
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.fillMaxWidth().height((34 * f).dp).clip(RoundedCornerShape(3.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
+                        Box(Modifier.fillMaxWidth().height((26 * f).dp).clip(RoundedCornerShape(3.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
                         Text(if (cur > 0) "${cur / 1000}" else "off", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
                     }
                 }
@@ -402,19 +399,18 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         }
 
         // RAM + Χώρος
-        if (prefs.dashMem) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (prefs.dashMem) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Card(Modifier.weight(1f)) {
                 Header("RAM", "", accent)
-                Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%")
+                Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%", size = 70)
                 Sub("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}" + if (stats.lowMem) " · χαμηλή!" else "")
-                LineChart(stats.ramHist, 100f, Color(0xFF7DE3C2), height = 50)
+                LineChart(stats.ramHist, 100f, Color(0xFF7DE3C2), height = 34)
             }
             Card(Modifier.weight(1f).clickable { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
                 Header("Χώρος", "", accent)
-                Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%")
+                Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%", size = 70)
                 Sub("${fmtBytes(stats.stUsed)} / ${fmtBytes(stats.stTotal)}")
-                Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}")
-                Sub("${repo.apps.value.size} εφαρμογές")
+                Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}, ${repo.apps.value.size} εφαρμογές")
             }
         }
 
@@ -426,7 +422,7 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                     (stats.rssi?.let { " · σήμα $it dBm" } ?: "") +
                     (if (stats.bandwidth > 0) " · ζώνη ~${stats.bandwidth / 1000} Mbps" else "")
             )
-            DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0))
+            DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0), height = 46)
             Sub("Από την εκκίνηση: ↓ ${fmtBytes(stats.rxTotal)} · ↑ ${fmtBytes(stats.txTotal)}")
         }
 
@@ -434,18 +430,14 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
         if (prefs.dashBattery) Card(Modifier.clickable { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
             Header("Μπαταρία · ${stats.batStatus}", "${stats.batLevel}%", Color(0xFF9BE37D))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 84)
+                Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 64)
                 Spacer(Modifier.width(14.dp))
                 Column {
-                    Sub("Θερμοκρασία: %.1f °C".format(stats.batTemp))
-                    Sub("Τάση: %.2f V".format(stats.batVolt / 1000f))
-                    Sub("Ρεύμα: ${stats.batCurrent} mA")
-                    Sub("Υγεία: ${stats.batHealth}")
-                    if (stats.batCycles >= 0) Sub("Κύκλοι: ${stats.batCycles}")
+                    Sub("%.1f °C, %.2f V, ${stats.batCurrent} mA".format(stats.batTemp, stats.batVolt / 1000f))
+                    Sub("Υγεία: ${stats.batHealth}" + if (stats.batCycles >= 0) ", ${stats.batCycles} κύκλοι" else "")
+                    LineChart(stats.batHist, null, Color(0xFF9BE37D), height = 30)
                 }
             }
-            Sub("Θερμοκρασία (ιστορικό)")
-            LineChart(stats.batHist, null, Color(0xFF9BE37D), height = 50)
         }
 
         // Θερμικά
@@ -456,7 +448,6 @@ fun Dashboard(stats: SysStats, prefs: Prefs, repo: AppRepository, active: Boolea
                 Bar((1f - h).coerceIn(0f, 1f), Color(0xFFFF8A65))
             }
         }
-        Spacer(Modifier.height(20.dp))
     }
     }
     if (editTitle) RenameDialog(prefs.dashTitle, { editTitle = false }) { prefs.dashTitle = it }
@@ -475,7 +466,7 @@ private fun Card(modifier: Modifier = Modifier, content: @Composable () -> Unit)
         modifier
             .fillMaxWidth()
             .let { m -> val (c, a) = LocalDashStyle.current; m.smokedGlass(RoundedCornerShape(26.dp), alpha = a, tint = c) }
-            .padding(18.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) { content() }
 }
 
@@ -499,7 +490,7 @@ private fun Bar(f: Float, color: Color) {
 
 @Composable
 fun Ring(f: Float, color: Color, label: String, size: Int = 96) {
-    Box(Modifier.padding(vertical = 8.dp).size(size.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.padding(vertical = 4.dp).size(size.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val sw = 9.dp.toPx()
             val arcSize = Size(this.size.width - sw, this.size.height - sw)
@@ -533,8 +524,8 @@ fun LineChart(values: List<Float>, max: Float?, color: Color, height: Int = 80) 
 }
 
 @Composable
-fun DualChart(a: List<Float>, b: List<Float>, ca: Color, cb: Color) {
-    Canvas(Modifier.padding(top = 8.dp).fillMaxWidth().height(80.dp)) {
+fun DualChart(a: List<Float>, b: List<Float>, ca: Color, cb: Color, height: Int = 80) {
+    Canvas(Modifier.padding(top = 6.dp).fillMaxWidth().height(height.dp)) {
         val mx = ((a + b).maxOrNull() ?: 1f).coerceAtLeast(8f) * 1.15f
         listOf(a to ca, b to cb).forEach { (vals, c) ->
             if (vals.size < 2) return@forEach
@@ -545,6 +536,24 @@ fun DualChart(a: List<Float>, b: List<Float>, ca: Color, cb: Color) {
                 if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
             }
             drawPath(p, c, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+        }
+    }
+}
+
+/** Όλο το ταμπλό χωράει στην οθόνη: αν δεν χωράει, μικραίνει ομοιόμορφα αντί για scroll */
+@Composable
+fun FitToHeight(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout(
+        content = { Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) { content() } },
+        modifier = modifier
+    ) { ms, c ->
+        val p = ms[0].measure(c.copy(minHeight = 0, maxHeight = androidx.compose.ui.unit.Constraints.Infinity))
+        val scale = if (c.hasBoundedHeight && p.height > c.maxHeight) c.maxHeight.toFloat() / p.height else 1f
+        layout(c.maxWidth, if (c.hasBoundedHeight) c.maxHeight else p.height) {
+            p.placeWithLayer(0, 0) {
+                scaleX = scale; scaleY = scale
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0f)
+            }
         }
     }
 }

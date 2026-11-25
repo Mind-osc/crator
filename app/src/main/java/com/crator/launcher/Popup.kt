@@ -312,10 +312,17 @@ private val FOLDER_SWATCHES = listOf(0, 0xFF2A2D40, 0xFF1F3A5F, 0xFF2F4F3A, 0xFF
 fun FolderMenuPopup(id: String, anchor: Offset, prefs: Prefs, onOpen: () -> Unit, onClose: () -> Unit) {
     val f = prefs.folders[id] ?: run { onClose(); return }
     var renaming by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf(false) }
     val inDrawer = id in prefs.drawerFolders
     AnchoredPopup(anchor, (prefs.iconSize * 0.75f).dp, onClose) {
         Column(Modifier.padding(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.padding(4.dp, 2.dp, 4.dp, 10.dp)) {
+                Box(
+                    Modifier.size(22.dp).clip(CircleShape)
+                        .background(androidx.compose.ui.graphics.Brush.sweepGradient((0..6).map { Color.hsv(it * 60f % 360f, 0.8f, 1f) }))
+                        .border(0.6.dp, Color.White.copy(alpha = 0.5f), CircleShape)
+                        .clickable { picking = true }
+                )
                 FOLDER_SWATCHES.forEach { c ->
                     Box(
                         Modifier.size(22.dp).clip(CircleShape)
@@ -340,6 +347,9 @@ fun FolderMenuPopup(id: String, anchor: Offset, prefs: Prefs, onOpen: () -> Unit
     }
     if (renaming) RenameDialog(f.name, { renaming = false }) { n ->
         prefs.folders = prefs.folders + (id to f.copy(name = n.ifBlank { "Φάκελος" }))
+    }
+    if (picking) ColorPickerDialog(if (f.color != 0) f.color else prefs.folderColor, { picking = false }) { c ->
+        prefs.folders = prefs.folders + (id to f.copy(color = c))
     }
 }
 
