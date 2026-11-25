@@ -67,6 +67,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -216,6 +220,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         val item = drag.item ?: return
         val src = drag.source
         val target = if (drag.moved) drag.target() else null
+        val pendingReflow = drag.reflow
         val from = drag.pos
         val dest = drag.destination(target, item)
         val tap = drag.end()
@@ -255,7 +260,18 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 val occ = prefs.occupied(target.page, exclude)
                 val hit = occ[target.cell]
                 val hitItem = hit?.let { prefs.pages.getOrNull(target.page)?.get(it) }
+                val folderDrop = target.center && pendingReflow == null
+                val canShift = !Item.isSized(item) && hit != null && !folderDrop
                 when {
+                    canShift -> {
+                        val moves = pendingReflow?.takeIf { it.page == target.page && it.insertAt == target.cell }?.moves
+                            ?: prefs.reflowMoves(target.page, target.cell, exclude)
+                        if (moves != null) {
+                            removeFromSource(src, item)
+                            prefs.applyReflow(target.page, moves, target.cell, item)
+                            drag.recent = item
+                        } else Toast.makeText(ctx, "Η σελίδα είναι γεμάτη", Toast.LENGTH_SHORT).show()
+                    }
                     prefs.fits(target.page, anchor, sx, sy, exclude) -> {
                         removeFromSource(src, item)
                         prefs.setHome(target.page, anchor, item)
@@ -278,6 +294,25 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
     }
     drag.onDrop = ::handleDrop
+    // Παραμερισμός: όταν κρατάς λίγο στην άκρη ενός εικονιδίου, τα άλλα κάνουν χώρο
+    LaunchedEffect(drag.active) {
+        if (!drag.active) return@LaunchedEffect
+        snapshotFlow {
+            val it = drag.item
+            val t = if (drag.moved) drag.target() as? DropTarget.Cell else null
+            if (it == null || t == null || Item.isSized(it)) null
+            else if (t.center && drag.reflow?.let { r -> r.page == t.page } != true) null
+            else t.page to t.cell
+        }.distinctUntilChanged().collectLatest { key ->
+            if (key == null) { delay(160); drag.reflow = null; return@collectLatest }
+            val (page, cell) = key
+            if (drag.reflow?.let { it.page == page && it.insertAt == cell } == true) return@collectLatest
+            delay(190)
+            val ex = (drag.source as? DragSource.Home)?.takeIf { it.page == page }?.cell
+            val moves = prefs.reflowMoves(page, cell, ex)
+            drag.reflow = if (moves.isNullOrEmpty()) null else DragState.Reflow(page, cell, moves)
+        }
+    }
     LaunchedEffect(drag.recent) { if (drag.recent != null) { delay(1200); drag.recent = null } }
 
     // Όταν αρχίσεις να σέρνεις από συρτάρι/φάκελο, κλείνουν για να φανεί η αρχική
@@ -527,8 +562,9 @@ private fun HomePage(
     val items = prefs.pages.getOrNull(index) ?: emptyMap()
     // στόχος φακέλου: εικονίδιο πάνω στο οποίο αιωρείται μια εφαρμογή
     val dragItem = drag.item
-    val hoverAnchor = if (drag.active && drag.moved && dragItem != null && Item.isApp(dragItem)) {
-        (drag.target() as? DropTarget.Cell)?.takeIf { it.page == index }?.let { t ->
+    val reflow = drag.reflow?.takeIf { it.page == index }?.moves ?: emptyMap()
+    val hoverAnchor = if (drag.active && drag.moved && dragItem != null && Item.isApp(dragItem) && reflow.isEmpty()) {
+        (drag.target() as? DropTarget.Cell)?.takeIf { it.page == index && it.center }?.let { t ->
             prefs.occupied(index)[t.cell]?.takeIf { a -> items[a]?.let { !Item.isSized(it) && it != dragItem } == true }
         }
     } else null
@@ -546,19 +582,22 @@ private fun HomePage(
             // Το εικονίδιο μικραίνει ώστε να χωράει πάντα και η ετικέτα στο κελί
             val labelH = if (prefs.showLabels) with(LocalDensity.current) { (prefs.labelSize * 1.4f * prefs.labelLines).sp.toDp() } + 5.dp else 0.dp
             val fitIcon = minOf(prefs.iconSize.dp, ch - labelH - 10.dp, cw - 10.dp).coerceAtLeast(24.dp)
-            items.forEach { (cell, item) ->
+            items.forEach { (cell, item) -> key(item) {
                 val (sx0, sy0) = Item.span(item)
                 val sx = sx0.coerceAtMost(prefs.cols); val sy = sy0.coerceAtMost(prefs.rows)
-                val r = cell / prefs.cols; val c = cell % prefs.cols
-                if (r >= prefs.rows) return@forEach
+                val shown = reflow[cell] ?: cell
+                val r = shown / prefs.cols; val c = shown % prefs.cols
+                val ox by animateDpAsState(cw * c, Motion.lively(), label = "ox")
+                val oy by animateDpAsState(ch * r, Motion.lively(), label = "oy")
+                if (r < prefs.rows) {
                 val dragging = drag.hiddenSource == DragSource.Home(index, cell)
                 val hovered = hoverAnchor == cell
                 val hoverS by androidx.compose.animation.core.animateFloatAsState(if (hovered) 1f else 0f, Motion.lively(), label = "hover")
                 Box(
                     Modifier
-                        .offset(cw * c, ch * r)
+                        .offset(ox, oy)
                         .size(cw * sx, ch * sy)
-                        .graphicsLayer { alpha = if (dragging) 0.25f else 1f },
+                        .graphicsLayer { alpha = if (dragging) 0f else 1f },
                     contentAlignment = Alignment.Center
                 ) {
                     if (hoverS > 0.01f) {
@@ -587,7 +626,8 @@ private fun HomePage(
                         }
                     }
                 }
-            }
+                }
+            } }
         }
     }
 }
@@ -628,7 +668,7 @@ private fun Dock(
 
     @Composable
     fun cell(i: Int, item: String, mod: Modifier) {
-        val m = mod.onGloballyPositioned { drag.dockSlots[i] = it.boundsInWindow() }
+        val m = Modifier.onGloballyPositioned { drag.dockSlots[i] = it.boundsInWindow() }.then(mod)
         if (Item.isFolder(item)) {
             prefs.folders[Item.folderId(item)]?.let { f ->
                 FolderCell(f, byKey, prefs, size, prefs.dockLabels, { b -> onFolder(Item.folderId(item), b) }, { onItemLong(i, item) }, m, pop = drag.recent == item)
@@ -666,14 +706,22 @@ private fun Dock(
                     horizontalArrangement = arr, verticalAlignment = Alignment.Bottom
                 ) {
                     val n = items.size
-                    items.forEachIndexed { pos, iv ->
+                    val dragged = drag.item
+                    val gap = if (drag.active && drag.moved && dragged != null && !Item.isSized(dragged) &&
+                        !(drag.source is DragSource.Dock && n <= 1)) (drag.target() as? DropTarget.DockAt)?.index else null
+                    items.forEachIndexed { pos, iv -> key(iv.value) {
+                        val half = (size + 8.dp) * 0.55f
+                        val shiftX by animateDpAsState(
+                            when { gap == null -> 0.dp; iv.index >= gap -> half; else -> -half },
+                            Motion.lively(), label = "dockShift"
+                        )
                         val lift = if (style == DockStyle.Arc && n > 1) {
                             val t = (pos - (n - 1) / 2f) / ((n - 1) / 2f)
                             (-22f * t * t).dp
                         } else 0.dp
                         val dragging = drag.hiddenSource == DragSource.Dock(iv.index)
-                        cell(iv.index, iv.value, Modifier.width(size + 8.dp).offset(y = lift).graphicsLayer { alpha = if (dragging) 0.25f else 1f })
-                    }
+                        cell(iv.index, iv.value, Modifier.width(size + 8.dp).offset(y = lift).graphicsLayer { alpha = if (dragging) 0f else 1f; translationX = shiftX.toPx() })
+                    } }
                 }
             }
         }

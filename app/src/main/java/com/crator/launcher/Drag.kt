@@ -60,7 +60,7 @@ sealed interface DragSource {
 }
 
 sealed interface DropTarget {
-    data class Cell(val page: Int, val cell: Int) : DropTarget
+    data class Cell(val page: Int, val cell: Int, val center: Boolean = false) : DropTarget
     data class DockAt(val index: Int) : DropTarget
     data class Zone(val id: String) : DropTarget
 }
@@ -87,6 +87,10 @@ class DragState {
     val zones = HashMap<String, Rect>()
 
     val active get() = item != null
+
+    /** Προεπισκόπηση παραμερισμού: σελίδα, θέση εισαγωγής, μετακινήσεις */
+    class Reflow(val page: Int, val insertAt: Int, val moves: Map<Int, Int>)
+    var reflow by mutableStateOf<Reflow?>(null)
 
     /** Το στοιχείο που μόλις τοποθετήθηκε (για το «σκάσιμο») */
     var recent by mutableStateOf<String?>(null)
@@ -126,6 +130,7 @@ class DragState {
     fun end(): (() -> Unit)? {
         val t = if (!moved) onTap else null
         lastSource = source
+        reflow = null
         item = null; source = null; moved = false; onTap = null; zones.clear()
         return t
     }
@@ -142,9 +147,13 @@ class DragState {
         val g = grids[currentPage] ?: return null
         if (!g.rect.contains(p)) return null
         val cw = g.rect.width / g.cols; val ch = g.rect.height / g.rows
-        val c = ((p.x - g.rect.left) / cw).toInt().coerceIn(0, g.cols - 1)
-        val r = ((p.y - g.rect.top) / ch).toInt().coerceIn(0, g.rows - 1)
-        return DropTarget.Cell(currentPage, r * g.cols + c)
+        val fx = (p.x - g.rect.left) / cw; val fy = (p.y - g.rect.top) / ch
+        val c = fx.toInt().coerceIn(0, g.cols - 1)
+        val r = fy.toInt().coerceIn(0, g.rows - 1)
+        val lx = fx - c; val ly = fy - r
+        // κέντρο εικονιδίου = φάκελος, άκρες = παραμερισμός
+        val center = lx in 0.24f..0.76f && ly in 0.1f..0.72f
+        return DropTarget.Cell(currentPage, r * g.cols + c, center)
     }
 }
 
@@ -213,7 +222,7 @@ fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
 
     Box(Modifier.fillMaxSize()) {
         // Επισήμανση θέσης (απαλό γυάλινο «κελί»)
-        if (target is DropTarget.Cell && drag.moved) {
+        if (target is DropTarget.Cell && drag.moved && !(target.center && Item.isApp(item) && drag.grids[target.page] != null && drag.reflow == null && hoverOccupied(drag, prefs, target))) {
             drag.grids[target.page]?.let { g ->
                 val (sx0, sy0) = Item.span(item)
                 val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)
@@ -294,4 +303,9 @@ private fun Zone(id: String, label: String, icon: ImageVector, drag: DragState, 
         Spacer(Modifier.width(6.dp))
         Text(label, color = Smoke.pearl, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+private fun hoverOccupied(drag: DragState, prefs: Prefs, t: DropTarget.Cell): Boolean {
+    val ex = (drag.source as? DragSource.Home)?.takeIf { it.page == t.page }?.cell
+    return prefs.occupied(t.page, ex)[t.cell] != null
 }

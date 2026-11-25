@@ -149,3 +149,42 @@ fun Prefs.ungroupFolder(id: String) {
     folders = folders - id
     f.apps.drop(1).forEach { placeOnHome(it, pos?.first ?: 0) }
 }
+
+fun Prefs.setPage(page: Int, map: Map<Int, String>) {
+    val ps = pages.toMutableList()
+    while (ps.size <= page) ps.add(emptyMap())
+    ps[page] = map
+    pages = ps
+}
+
+/**
+ * Παραμερισμός (σαν iPhone): για να μπει κάτι στο insertAt, τα εικονίδια από εκεί
+ * μέχρι το πρώτο κενό μετακινούνται κατά μία θέση (μπροστά, αλλιώς πίσω).
+ * Τα widgets μένουν ακίνητα. Επιστρέφει παλιό κελί → νέο κελί, ή null αν δεν γίνεται.
+ */
+fun Prefs.reflowMoves(page: Int, insertAt: Int, exclude: Int?): Map<Int, Int>? {
+    val n = cols * rows
+    val m = pages.getOrNull(page) ?: return null
+    val occ = occupied(page, exclude)
+    val owner = occ[insertAt] ?: return null
+    if (m[owner]?.let { Item.isSized(it) } != false) return null
+    fun isWidget(c: Int) = occ[c]?.let { a -> m[a]?.let { Item.isSized(it) } } == true
+    fun isFree(c: Int) = c !in occ
+    val fwd = (insertAt + 1 until n).firstOrNull { isFree(it) }
+    if (fwd != null) {
+        val chain = (insertAt until fwd).filter { !isWidget(it) }
+        return chain.zip(chain.drop(1) + fwd).toMap()
+    }
+    val back = (insertAt - 1 downTo 0).firstOrNull { isFree(it) } ?: return null
+    val chain = (back + 1..insertAt).filter { !isWidget(it) }
+    return chain.zip(listOf(back) + chain.dropLast(1)).toMap()
+}
+
+fun Prefs.applyReflow(page: Int, moves: Map<Int, Int>, insertAt: Int, item: String) {
+    val pm = (pages.getOrNull(page) ?: emptyMap()).toMutableMap()
+    val moved = moves.mapNotNull { (from, to) -> pm[from]?.let { to to it } }
+    moves.keys.forEach { pm.remove(it) }
+    moved.forEach { (to, it) -> pm[to] = it }
+    pm[insertAt] = item
+    setPage(page, pm)
+}
