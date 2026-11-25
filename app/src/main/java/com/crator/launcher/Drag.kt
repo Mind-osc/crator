@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -63,6 +64,8 @@ sealed interface DropTarget {
     data class Cell(val page: Int, val cell: Int, val center: Boolean = false) : DropTarget
     data class DockAt(val index: Int) : DropTarget
     data class Zone(val id: String) : DropTarget
+    /** Πάνω σε εικονίδιο/φάκελο μέσα στο συρτάρι (key = app key ή "f:<id>") */
+    data class DrawerItem(val key: String) : DropTarget
 }
 
 class GridGeom(val rect: Rect, val cols: Int, val rows: Int)
@@ -76,6 +79,11 @@ class DragState {
     private var startPos = Offset.Zero
     private var onTap: (() -> Unit)? = null
     var currentPage = 0
+    /** Όσο είναι ανοιχτό το συρτάρι, οι στόχοι είναι τα εικονίδια του συρταριού */
+    var drawerOpen = false
+    val drawerSlots = HashMap<String, Rect>()
+    /** Swipe με δεύτερο δάχτυλο ενώ κρατάς εικονίδιο */
+    var onSecondSwipe: () -> Unit = {}
     var lastSource: DragSource? = null
     /** Η πηγή που πρέπει να μένει κρυφή (όσο σέρνεις ή προσγειώνεται) */
     val hiddenSource: DragSource? get() = if (active && moved) source else if (settle != null) lastSource else null
@@ -104,6 +112,7 @@ class DragState {
         return when (t) {
             null -> startPos
             is DropTarget.Zone -> zones[t.id]?.center ?: pos
+            is DropTarget.DrawerItem -> drawerSlots[t.key]?.center ?: pos
             is DropTarget.DockAt -> (dockSlots[t.index] ?: dockSlots[t.index - 1])?.center ?: dockRect?.center ?: pos
             is DropTarget.Cell -> {
                 val g = grids[t.page] ?: return pos
@@ -138,6 +147,17 @@ class DragState {
     fun target(): DropTarget? {
         val p = pos
         zones.forEach { (id, r) -> if (r.contains(p)) return DropTarget.Zone(id) }
+        if (drawerOpen) {
+            val it = item
+            drawerSlots.forEach { (k, r) ->
+                if (k != it && r.contains(p)) {
+                    // μόνο στο «σώμα» του εικονιδίου, όχι στις άκρες
+                    val fx = (p.x - r.left) / r.width; val fy = (p.y - r.top) / r.height
+                    if (fx in 0.15f..0.85f && fy in 0.05f..0.75f) return DropTarget.DrawerItem(k)
+                }
+            }
+            return null
+        }
         dockRect?.let { r ->
             if (r.contains(p)) {
                 val idx = (0 until dockSize).count { i -> dockSlots[i]?.let { it.center.x < p.x } ?: false }
@@ -161,15 +181,33 @@ class DragState {
 fun Modifier.dragObserver(drag: DragState): Modifier = this.then(
     Modifier.pointerInput(drag) {
         awaitPointerEventScope {
+            var dragId: androidx.compose.ui.input.pointer.PointerId? = null
+            var secondDy = 0f
             while (true) {
                 val ev = awaitPointerEvent(PointerEventPass.Initial)
-                val ch = ev.changes.firstOrNull() ?: continue
-                drag.lastPointer = ch.position
-                if (drag.active) {
-                    drag.update(ch.position, viewConfiguration.touchSlop * 1.2f)
-                    ev.changes.forEach { it.consume() }
-                    if (ev.changes.none { it.pressed }) drag.onDrop()
+                if (!drag.active) {
+                    // το δάχτυλο που θα κάνει το παρατεταμένο πάτημα
+                    val ch = ev.changes.firstOrNull { it.pressed } ?: ev.changes.firstOrNull() ?: continue
+                    drag.lastPointer = ch.position
+                    dragId = ch.id
+                    secondDy = 0f
+                    continue
                 }
+                val main = ev.changes.firstOrNull { it.id == dragId }
+                if (main == null || !main.pressed) {
+                    ev.changes.forEach { it.consume() }
+                    drag.onDrop()
+                    continue
+                }
+                drag.lastPointer = main.position
+                drag.update(main.position, viewConfiguration.touchSlop * 1.2f)
+                // δεύτερο δάχτυλο: swipe κάτω → κλείνει το συρτάρι
+                ev.changes.filter { it.id != dragId && it.pressed && it.previousPressed }.forEach { o ->
+                    secondDy += o.position.y - o.previousPosition.y
+                }
+                if (ev.changes.none { it.id != dragId && it.pressed }) secondDy = 0f
+                if (secondDy > 140f) { secondDy = 0f; drag.onSecondSwipe() }
+                ev.changes.forEach { it.consume() }
             }
         }
     }
@@ -257,6 +295,20 @@ fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
                     Zone("uninstall", "Απεγκατάσταση", Icons.Rounded.Delete, drag, target, Modifier.weight(1f))
                 }
             }
+        }
+        // Υπόδειξη μέσα στο συρτάρι
+        androidx.compose.animation.AnimatedVisibility(
+            drag.active && drag.moved && drag.drawerOpen,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(Motion.lively(Motion.sheet)) { it },
+            exit = androidx.compose.animation.fadeOut()
+        ) {
+            Text(
+                "Πάνω σε εικονίδιο για φάκελο · swipe κάτω με δεύτερο δάχτυλο για την αρχική",
+                color = Smoke.pearl, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                modifier = Modifier.navigationBarsPadding().padding(16.dp)
+                    .smokedGlass(RoundedCornerShape(18.dp), alpha = 0.7f).padding(horizontal = 14.dp, vertical = 10.dp)
+            )
         }
         // Το στοιχείο που σέρνεις
         val size = prefs.iconSize.dp

@@ -58,6 +58,9 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -121,8 +124,12 @@ fun AppDrawer(
     onLong: (AppInfo) -> Unit,
     onFolder: (String, Rect?) -> Unit,
     onFolderLong: (String) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    drag: DragState? = null
 ) {
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { drag?.drawerSlots?.clear() } }
+    val hoverKey = drag?.let { d -> if (d.active && d.moved) (d.target() as? DropTarget.DrawerItem)?.key else null }
+    val dragKey = drag?.let { d -> if (d.active && d.moved) d.item else null }
     var q by remember { mutableStateOf(seed) }
     val focus = remember { FocusRequester() }
     val openedAt = remember { System.currentTimeMillis() }
@@ -192,10 +199,27 @@ fun AppDrawer(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 itemsIndexed(list, key = { _, it -> it.key }) { i, e ->
-                    StaggerIn(i, Modifier.animateItemPlacement(), enabled = i < 28 && System.currentTimeMillis() - openedAt < 700) {
-                        when (e) {
-                            is DrawerEntry.A -> AppCell(e.app, prefs, prefs.iconSize.dp, true, { onLaunch(e.app, it) }, { onLong(e.app) }, labelColor = labelColor)
-                            is DrawerEntry.F -> FolderCell(e.folder, byKey, prefs, prefs.iconSize.dp, true, { b -> onFolder(e.id, b) }, { onFolderLong(e.id) })
+                    val hover by androidx.compose.animation.core.animateFloatAsState(if (hoverKey == e.key) 1f else 0f, Motion.lively(Motion.drag), label = "dh")
+                    StaggerIn(
+                        i,
+                        Modifier.animateItemPlacement()
+                            .onGloballyPositioned { c -> drag?.drawerSlots?.put(e.key, c.boundsInWindow()) }
+                            .graphicsLayer { alpha = if (dragKey == e.key) 0.25f else 1f },
+                        enabled = i < 28 && System.currentTimeMillis() - openedAt < 700
+                    ) {
+                        Box(contentAlignment = Alignment.TopCenter) {
+                            if (hover > 0.01f) Box(
+                                Modifier.padding(top = 2.dp).size(prefs.iconSize.dp * 1.4f)
+                                    .graphicsLayer { val sc = 0.6f + 0.4f * hover; scaleX = sc; scaleY = sc; alpha = hover; translationY = -prefs.iconSize.dp.toPx() * 0.12f }
+                                    .smokedGlass(shapeFor(if (prefs.iconShape == IconShape.Original) IconShape.Circle else prefs.iconShape, prefs.iconCorner), alpha = 0.45f)
+                            )
+                            val pop = drag?.recent == e.key
+                            Box(Modifier.graphicsLayer { val sc = 1f - 0.12f * hover; scaleX = sc; scaleY = sc }) {
+                                when (e) {
+                                    is DrawerEntry.A -> AppCell(e.app, prefs, prefs.iconSize.dp, true, { onLaunch(e.app, it) }, { onLong(e.app) }, labelColor = labelColor)
+                                    is DrawerEntry.F -> FolderCell(e.folder, byKey, prefs, prefs.iconSize.dp, true, { b -> onFolder(e.id, b) }, { onFolderLong(e.id) }, pop = pop)
+                                }
+                            }
                         }
                     }
                 }
@@ -204,7 +228,10 @@ fun AppDrawer(
             LazyColumn(Modifier.weight(1f).nestedScroll(conn), contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 24.dp)) {
                 items(list, key = { it.key }) { e ->
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        Modifier.fillMaxWidth()
+                            .onGloballyPositioned { c -> drag?.drawerSlots?.put(e.key, c.boundsInWindow()) }
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (hoverKey == e.key) Color.White.copy(alpha = 0.12f) else Color.Transparent)
                             .combinedClickable(
                                 onClick = { when (e) { is DrawerEntry.A -> onLaunch(e.app, null); is DrawerEntry.F -> onFolder(e.id, null) } },
                                 onLongClick = { when (e) { is DrawerEntry.A -> onLong(e.app); is DrawerEntry.F -> onFolderLong(e.id) } }

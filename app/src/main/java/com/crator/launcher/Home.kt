@@ -260,6 +260,29 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         drag.settle = DragState.Settle(item, from, dest, target is DropTarget.Zone)
         when (target) {
             null -> {}
+            is DropTarget.DrawerItem -> {
+                if (!Item.isApp(item)) return
+                val k = target.key
+                if (k.startsWith("f:")) {
+                    val id = k.removePrefix("f:")
+                    prefs.addToFolder(id, item)
+                    drag.recent = k
+                } else if (k != item) {
+                    val id = System.currentTimeMillis().toString(36)
+                    prefs.folders = prefs.folders + (id to Folder("Φάκελος", listOf(k, item)))
+                    prefs.drawerFolders = prefs.drawerFolders + id
+                    drag.recent = "f:$id"
+                }
+                // αν ήταν ήδη σε άλλο φάκελο του συρταριού, βγαίνει από εκεί
+                prefs.drawerFolders.forEach { fid ->
+                    val f = prefs.folders[fid]
+                    if (f != null && item in f.apps && "f:$fid" != drag.recent) {
+                        val rest = f.apps - item
+                        if (rest.isEmpty()) { prefs.folders = prefs.folders - fid; prefs.drawerFolders = prefs.drawerFolders - fid }
+                        else prefs.folders = prefs.folders + (fid to f.copy(apps = rest))
+                    }
+                }
+            }
             is DropTarget.Zone -> when (target.id) {
                 "remove" -> {
                     removeFromSource(src, item)
@@ -348,8 +371,10 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     LaunchedEffect(drag.recent) { if (drag.recent != null) { delay(1200); drag.recent = null } }
 
     // Όταν αρχίσεις να σέρνεις από συρτάρι/φάκελο, κλείνουν για να φανεί η αρχική
+    drag.drawerOpen = overlay == Overlay.Drawer
+    drag.onSecondSwipe = { if (overlay == Overlay.Drawer) { overlay = Overlay.None; folderOpen = null } }
     LaunchedEffect(drag.moved) {
-        if (drag.moved) { if (overlay == Overlay.Drawer) overlay = Overlay.None; folderOpen = null }
+        if (drag.moved && overlay != Overlay.Drawer) folderOpen = null
     }
     // Αλλαγή σελίδας όταν κρατάς στην άκρη
     val edgePx = with(LocalDensity.current) { 28.dp.toPx() }
@@ -359,7 +384,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             delay(80)
             val x = drag.pos.x
             val dir = when { x < edgePx -> -1; x > rootSize.width - edgePx -> 1; else -> 0 }
-            if (dir == 0 || !drag.moved) { since = 0L; continue }
+            if (dir == 0 || !drag.moved || drag.drawerOpen) { since = 0L; continue }
             val now = System.currentTimeMillis()
             if (since == 0L) { since = now; continue }
             if (now - since > 600) {
@@ -489,7 +514,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 onLong = { app -> beginDrag(app.key, DragSource.Drawer) { sheetApp = app } },
                 onFolder = ::openFolder,
                 onFolderLong = { id -> popupAnchor = drag.lastPointer; folderSheet = id },
-                onClose = { overlay = Overlay.None }
+                onClose = { overlay = Overlay.None },
+                drag = drag
             )
         }
         Presence(folderOpen) { id ->
