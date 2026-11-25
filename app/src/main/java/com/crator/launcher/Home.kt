@@ -400,7 +400,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
 
     val blurTarget = when {
         overlay != Overlay.None -> prefs.blurStrength.dp
-        folderOpen != null || anySheet -> (prefs.blurStrength * 0.6f).dp
+        sheetApp != null || folderSheet != null || widgetSheet != null || homeMenu -> (prefs.blurStrength * 0.6f).dp
         else -> 0.dp
     }
     val blur by animateDpAsState(blurTarget, Motion.soft(Motion.overlay), label = "blur")
