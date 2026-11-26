@@ -100,6 +100,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.drag
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Nfc
 import androidx.compose.material.icons.rounded.WifiTethering
@@ -658,47 +659,60 @@ fun Dashboard(
         val rectsNow by androidx.compose.runtime.rememberUpdatedState(rects)
         val liveNow by androidx.compose.runtime.rememberUpdatedState(live)
 
-        // Η αφή: πάτημα σε κομμάτι + κίνηση → σύρσιμο. Το ✕ μένει απλό πάτημα.
-        val dragInput = if (!editMode) Modifier else Modifier.pointerInput(Unit) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
-                val hit = rectsNow.entries.firstOrNull { (_, r) ->
-                    down.position.x >= r.left && down.position.x < r.right && down.position.y >= r.top && down.position.y < r.bottom
-                } ?: return@awaitEachGesture
-                val id = hit.key
-                val ok = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
-                if (ok == null) return@awaitEachGesture
-                grab = down.position - androidx.compose.ui.geometry.Offset(hit.value.left.toFloat(), hit.value.top.toFloat())
-                pointer = ok.position
-                draggingId = id
-                var lastSwap = 0L
-                try {
-                    drag(ok.id) { c ->
-                        c.consume()
-                        pointer = c.position
-                        val mine = rectsNow[id] ?: return@drag
-                        val center = pointer - grab + androidx.compose.ui.geometry.Offset(mine.width / 2f, mine.height / 2f)
-                        val now = System.currentTimeMillis()
-                        if (now - lastSwap < 140) return@drag
-                        // στόχος: το κομμάτι κάτω από το κέντρο, μόνο στο εσωτερικό 70% (όχι τρεμόπαιγμα στα όρια)
-                        val target = rectsNow.entries.firstOrNull { (k, r) ->
-                            if (k == id) false else {
-                                val mx = r.width * 0.15f; val my = r.height * 0.15f
-                                center.x > r.left + mx && center.x < r.right - mx && center.y > r.top + my && center.y < r.bottom - my
+        // Η αφή (σαν τα εικονίδια):
+        //  - εκτός επεξεργασίας: παρατεταμένο πάτημα → μπαίνει σε επεξεργασία και σηκώνεται στο δάχτυλο αμέσως
+        //  - σε επεξεργασία: πάτημα + κίνηση → σύρσιμο. Το ✕ μένει απλό πάτημα.
+        // Ο χειριστής είναι «remember», ώστε να μην ξαναστήνεται και να μη χάνει το δάχτυλο στη μέση.
+        val editNow by androidx.compose.runtime.rememberUpdatedState(editMode)
+        val endNow by androidx.compose.runtime.rememberUpdatedState({ endDrag() })
+        val enterEdit by androidx.compose.runtime.rememberUpdatedState({ editMode = true })
+        val handler: suspend androidx.compose.ui.input.pointer.PointerInputScope.() -> Unit = remember {
+            {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val hit = rectsNow.entries.firstOrNull { (_, r) ->
+                        down.position.x >= r.left && down.position.x < r.right && down.position.y >= r.top && down.position.y < r.bottom
+                    } ?: return@awaitEachGesture
+                    val id = hit.key
+                    val start = if (editNow) {
+                        awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                    } else {
+                        awaitLongPressOrCancellation(down.id)?.also { enterEdit() }
+                    } ?: return@awaitEachGesture
+                    start.consume()
+                    grab = down.position - androidx.compose.ui.geometry.Offset(hit.value.left.toFloat(), hit.value.top.toFloat())
+                    pointer = start.position
+                    draggingId = id
+                    var lastSwap = 0L
+                    try {
+                        drag(start.id) { c ->
+                            c.consume()
+                            pointer = c.position
+                            val mine = rectsNow[id] ?: return@drag
+                            val center = pointer - grab + androidx.compose.ui.geometry.Offset(mine.width / 2f, mine.height / 2f)
+                            val now = System.currentTimeMillis()
+                            if (now - lastSwap < 140) return@drag
+                            // στόχος: το κομμάτι κάτω από το κέντρο, μόνο στο εσωτερικό 70% (όχι τρεμόπαιγμα στα όρια)
+                            val target = rectsNow.entries.firstOrNull { (k, r) ->
+                                if (k == id) false else {
+                                    val mx = r.width * 0.15f; val my = r.height * 0.15f
+                                    center.x > r.left + mx && center.x < r.right - mx && center.y > r.top + my && center.y < r.bottom - my
+                                }
+                            } ?: return@drag
+                            val l = liveNow
+                            val from = l.indexOf(id); val to = l.indexOf(target.key)
+                            if (from >= 0 && to >= 0 && from != to) {
+                                live = l.toMutableList().also { x -> x.removeAt(from); x.add(to, id) }
+                                lastSwap = now
                             }
-                        } ?: return@drag
-                        val l = liveNow
-                        val from = l.indexOf(id); val to = l.indexOf(target.key)
-                        if (from >= 0 && to >= 0 && from != to) {
-                            live = l.toMutableList().also { x -> x.removeAt(from); x.add(to, id) }
-                            lastSwap = now
                         }
+                    } finally {
+                        endNow()
                     }
-                } finally {
-                    endDrag()
                 }
             }
         }
+        val dragInput = Modifier.pointerInput(Unit, handler)
 
         Box(
             Modifier.fillMaxWidth().weight(1f)
@@ -734,7 +748,6 @@ fun Dashboard(
                                 scaleX = sc; scaleY = sc
                                 if (isDrag) { shadowElevation = 24f; alpha = 0.95f }
                             }
-                            .then(if (!editMode) Modifier.longPress { editMode = true } else Modifier)
                     ) {
                         unit(id, Modifier.fillMaxSize())
                         if (editMode) {
