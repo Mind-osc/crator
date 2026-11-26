@@ -457,7 +457,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             if (prefs.searchPos == SearchPos.Top && !onDashboard) SearchPill(prefs, Modifier.padding(16.dp, 8.dp), onVoice = { startVoice() }) { openSearch() }
             Box(Modifier.weight(1f).fillMaxWidth()) {
             HorizontalPager(
-                state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = !drag.active,
+                state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = !drag.active && !DashHooks.editing.value,
                 flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
                     state = pager,
                     snapAnimationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.86f, stiffness = 400f * Motion.speed * Motion.page * Motion.speed * Motion.page)

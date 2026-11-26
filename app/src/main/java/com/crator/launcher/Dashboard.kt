@@ -94,6 +94,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Nfc
 import androidx.compose.material.icons.rounded.WifiTethering
@@ -355,6 +359,8 @@ object DashHooks {
     var openCrator: () -> Unit = {}
     var openClaude: () -> Unit = {}
     var openSearch: () -> Unit = {}
+    /** Σε επεξεργασία ταμπλό: σταματά το σύρσιμο σελίδων ώστε να μην «κλέβει» το δάχτυλο */
+    val editing = androidx.compose.runtime.mutableStateOf(false)
     val torch = androidx.compose.runtime.mutableStateOf(false)
 }
 
@@ -568,15 +574,15 @@ fun Dashboard(
         }
     }
 
-    // θέσεις για τη μετακίνηση σε πλέγμα
-    val slots = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
-    var container by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
-    // θέση δαχτύλου μέσα στο πλέγμα + σημείο που έπιασες το κουμπί (ανθεκτικό σε αλλαγή γραμμής)
+    // ----- Μετακίνηση σαν τα εικονίδια -----
+    // Ένας χειριστής αφής σε όλο το πλέγμα (δεν ακυρώνεται ποτέ όταν αλλάζει η σειρά),
+    // το κομμάτι ακολουθεί το δάχτυλο και τα υπόλοιπα γλιστράνε με κίνηση στις νέες θέσεις.
+    var gridSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var pointer by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     var grab by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
     fun endDrag() { if (draggingId != null) { prefs.dashItems = live; draggingId = null } }
-    LaunchedEffect(editMode) { if (!editMode) endDrag() }
-    var lastSwap by remember { mutableStateOf(0L) }
+    LaunchedEffect(editMode) { if (!editMode) endDrag(); DashHooks.editing.value = editMode }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { DashHooks.editing.value = false } }
 
     CompositionLocalProvider(
         LocalDensity provides Density(d.density * prefs.dashScale / 100f, d.fontScale),
@@ -627,97 +633,119 @@ fun Dashboard(
             if (last != null && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
         }
 
-        @Composable
-        fun cell(id: String, mod: Modifier) = androidx.compose.runtime.key(id) {
-            val isDrag = draggingId == id
-            val lift by animateFloatAsState(if (isDrag) 1.06f else 1f, Motion.pop(Motion.drag), label = "lift")
-            Box(
-                mod
-                    .onGloballyPositioned { c -> container?.let { if (it.isAttached && c.isAttached) slots[id] = it.localBoundingBoxOf(c) } }
-                    .zIndex(if (isDrag) 1f else 0f)
-                    .graphicsLayer {
-                        if (isDrag) {
-                            val s = slots[id]
-                            if (s != null) { val t = pointer - grab - s.topLeft; translationX = t.x; translationY = t.y }
-                        }
-                        val sc = editScale * lift
-                        scaleX = sc; scaleY = sc
-                    }
-                    .then(if (!editMode) Modifier.longPress { editMode = true } else Modifier)
-            ) {
-                unit(id, Modifier.fillMaxSize())
-                if (editMode) {
-                    Box(
-                        Modifier.matchParentSize().pointerInput(id) {
-                            try {
-                                detectDragGestures(
-                                    onDragStart = { o ->
-                                        slots[id]?.let { mine -> grab = o; pointer = mine.topLeft + o; draggingId = id }
-                                    },
-                                    onDragEnd = { endDrag() },
-                                    onDragCancel = { endDrag() }
-                                ) { c, amount ->
-                                    c.consume()
-                                    if (draggingId != id) return@detectDragGestures
-                                    pointer += amount
-                                    val mine = slots[id] ?: return@detectDragGestures
-                                    val center = pointer - grab + androidx.compose.ui.geometry.Offset(mine.width / 2f, mine.height / 2f)
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastSwap < 180) return@detectDragGestures
-                                    val hit = slots.entries.firstOrNull { (k, r) -> k != id && k in live && r.contains(center) }
-                                    if (hit != null) {
-                                        // μετακίνηση στη θέση του άλλου (τα υπόλοιπα κυλάνε μία θέση)
-                                        val from = live.indexOf(id); val to = live.indexOf(hit.key)
-                                        if (from >= 0 && to >= 0) {
-                                            live = live.toMutableList().also { l -> l.removeAt(from); l.add(to, id) }
-                                            lastSwap = now
-                                        }
-                                    }
-                                }
-                            } finally {
-                                // αν ακυρωθεί η χειρονομία με οποιονδήποτε τρόπο, δεν μένει ποτέ «κολλημένο»
-                                if (draggingId == id) endDrag()
+        // Θέσεις (σε px μέσα στο πλέγμα): γραμμή καρτών = 1 μερίδα, γραμμή κουμπιών = 0,62
+        val gapPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+        val rects: Map<String, androidx.compose.ui.unit.IntRect> = run {
+            val m = LinkedHashMap<String, androidx.compose.ui.unit.IntRect>()
+            val w = gridSize.width; val h = gridSize.height
+            if (w > 0 && h > 0 && rows.isNotEmpty()) {
+                val weights = rows.map { if (isButton(it[0])) 0.62f else 1f }
+                val avail = (h - gapPx * (rows.size - 1)).coerceAtLeast(0)
+                val sum = weights.sum()
+                var y = 0
+                rows.forEachIndexed { r, row ->
+                    val rh = (avail * weights[r] / sum).toInt()
+                    val cols = if (isButton(row[0])) 4 else 2
+                    val cw = (w - gapPx * (cols - 1)) / cols
+                    row.forEachIndexed { c, id -> m[id] = androidx.compose.ui.unit.IntRect(c * (cw + gapPx), y, c * (cw + gapPx) + cw, y + rh) }
+                    y += rh + gapPx
+                }
+            }
+            m
+        }
+        val rectsNow by androidx.compose.runtime.rememberUpdatedState(rects)
+        val liveNow by androidx.compose.runtime.rememberUpdatedState(live)
+
+        // Η αφή: πάτημα σε κομμάτι + κίνηση → σύρσιμο. Το ✕ μένει απλό πάτημα.
+        val dragInput = if (!editMode) Modifier else Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val hit = rectsNow.entries.firstOrNull { (_, r) ->
+                    down.position.x >= r.left && down.position.x < r.right && down.position.y >= r.top && down.position.y < r.bottom
+                } ?: return@awaitEachGesture
+                val id = hit.key
+                val ok = androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                if (ok == null) return@awaitEachGesture
+                grab = down.position - androidx.compose.ui.geometry.Offset(hit.value.left.toFloat(), hit.value.top.toFloat())
+                pointer = ok.position
+                draggingId = id
+                var lastSwap = 0L
+                try {
+                    androidx.compose.foundation.gestures.drag(ok.id) { c ->
+                        c.consume()
+                        pointer = c.position
+                        val mine = rectsNow[id] ?: return@drag
+                        val center = pointer - grab + androidx.compose.ui.geometry.Offset(mine.width / 2f, mine.height / 2f)
+                        val now = System.currentTimeMillis()
+                        if (now - lastSwap < 140) return@drag
+                        // στόχος: το κομμάτι κάτω από το κέντρο, μόνο στο εσωτερικό 70% (όχι τρεμόπαιγμα στα όρια)
+                        val target = rectsNow.entries.firstOrNull { (k, r) ->
+                            if (k == id) false else {
+                                val mx = r.width * 0.15f; val my = r.height * 0.15f
+                                center.x > r.left + mx && center.x < r.right - mx && center.y > r.top + my && center.y < r.bottom - my
                             }
+                        } ?: return@drag
+                        val l = liveNow
+                        val from = l.indexOf(id); val to = l.indexOf(target.key)
+                        if (from >= 0 && to >= 0 && from != to) {
+                            live = l.toMutableList().also { x -> x.removeAt(from); x.add(to, id) }
+                            lastSwap = now
                         }
-                    )
-                    val xs = if (isButton(id)) 22.dp else 26.dp
-                    Box(
-                        Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).size(xs)
-                            .smokedGlass(CircleShape, alpha = 0.9f, tint = Smoke.danger)
-                            .clickable { remove(id) },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(xs * 0.55f)) }
+                    }
+                } finally {
+                    endDrag()
                 }
             }
         }
 
-        // Γεμίζει ακριβώς την οθόνη: γραμμή καρτών = 1 μερίδα, γραμμή κουμπιών = 0,62.
-        // Όλα τα κομμάτια σε ΕΝΑ γονέα, ώστε όταν αλλάζουν γραμμή να μη ξαναφτιάχνονται (και να μη χάνεται το drag).
-        Box(Modifier.fillMaxWidth().weight(1f).onGloballyPositioned { container = it }) {
+        Box(
+            Modifier.fillMaxWidth().weight(1f)
+                .onSizeChanged { gridSize = it }
+                .then(dragInput)
+        ) {
             if (rows.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Άδειο ταμπλό. Πάτα + για να προσθέσεις.", color = Smoke.mist, fontSize = 13.sp)
-            } else androidx.compose.ui.layout.Layout(
-                content = { rows.flatten().forEach { id -> cell(id, Modifier) } },
-                modifier = Modifier.fillMaxSize()
-            ) { measurables, cs ->
-                val gap = 8.dp.roundToPx()
-                val w = cs.maxWidth; val h = cs.maxHeight
-                val weights = rows.map { if (isButton(it[0])) 0.62f else 1f }
-                val avail = (h - gap * (rows.size - 1)).coerceAtLeast(0)
-                val sum = weights.sum()
-                val placed = ArrayList<Triple<androidx.compose.ui.layout.Placeable, Int, Int>>(measurables.size)
-                var i = 0; var y = 0
-                rows.forEachIndexed { r, row ->
-                    val rh = (avail * weights[r] / sum).toInt().coerceAtLeast(0)
-                    val cols = if (isButton(row[0])) 4 else 2
-                    val cw = ((w - gap * (cols - 1)) / cols).coerceAtLeast(0)
-                    row.forEachIndexed { c, _ ->
-                        val p = measurables[i++].measure(androidx.compose.ui.unit.Constraints.fixed(cw, rh))
-                        placed += Triple(p, c * (cw + gap), y)
+            }
+            live.forEach { id ->
+                val r = rects[id]
+                if (r != null) androidx.compose.runtime.key(id) {
+                    val isDrag = draggingId == id
+                    val slide by androidx.compose.animation.core.animateIntOffsetAsState(
+                        r.topLeft,
+                        androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 500f),
+                        label = "slide"
+                    )
+                    val lift by animateFloatAsState(if (isDrag) 1.07f else 1f, Motion.pop(Motion.drag), label = "lift")
+                    Box(
+                        Modifier
+                            .zIndex(if (isDrag) 2f else 0f)
+                            .offset {
+                                if (isDrag) androidx.compose.ui.unit.IntOffset((pointer.x - grab.x).toInt(), (pointer.y - grab.y).toInt())
+                                else slide
+                            }
+                            .layout { m, _ ->
+                                val p = m.measure(androidx.compose.ui.unit.Constraints.fixed(r.width, r.height))
+                                layout(r.width, r.height) { p.place(0, 0) }
+                            }
+                            .graphicsLayer {
+                                val sc = editScale * lift
+                                scaleX = sc; scaleY = sc
+                                if (isDrag) { shadowElevation = 24f; alpha = 0.95f }
+                            }
+                            .then(if (!editMode) Modifier.longPress { editMode = true } else Modifier)
+                    ) {
+                        unit(id, Modifier.fillMaxSize())
+                        if (editMode) {
+                            val xs = if (isButton(id)) 22.dp else 26.dp
+                            Box(
+                                Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).size(xs)
+                                    .smokedGlass(CircleShape, alpha = 0.9f, tint = Smoke.danger)
+                                    .clickable { remove(id) },
+                                contentAlignment = Alignment.Center
+                            ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(xs * 0.55f)) }
+                        }
                     }
-                    y += rh + gap
                 }
-                layout(w, h) { placed.forEach { (p, x, yy) -> p.place(x, yy) } }
             }
         }
     }
