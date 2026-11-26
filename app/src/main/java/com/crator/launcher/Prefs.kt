@@ -48,7 +48,7 @@ enum class DockAlign(val label: String) { Spread("Ομοιόμορφα"), Center
 enum class SearchPos(val label: String) { AboveDock("Πάνω από dock"), InDock("Μέσα στο dock"), Top("Πάνω"), Hidden("Κρυφή") }
 
 enum class GestureAction(val label: String) {
-    None("Τίποτα"), Claude("Claude"), Drawer("Συρτάρι εφαρμογών"), Notifications("Ειδοποιήσεις"),
+    None("Τίποτα"), Claude("Αναζήτηση"), Drawer("Συρτάρι εφαρμογών"), Notifications("Ειδοποιήσεις"),
     QuickSettings("Γρήγορες ρυθμίσεις"), Dashboard("Ταμπλό"), LauncherSettings("Ρυθμίσεις Crator")
 }
 

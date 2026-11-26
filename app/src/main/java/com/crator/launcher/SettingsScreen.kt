@@ -98,7 +98,6 @@ private val SECTIONS = listOf(
     Section("gestures", "Χειρονομίες", "Swipe πάνω/κάτω, διπλό tap", Icons.Rounded.Gesture),
     Section("folders", "Φάκελοι, widgets & badges", "Στυλ φακέλων, στρογγύλεμα widgets, ειδοποιήσεις", Icons.Rounded.Folder),
     Section("drawer", "Συρτάρι εφαρμογών", "Στυλ, χρώματα, αναζήτηση, κρυφές εφαρμογές", Icons.Rounded.Apps),
-    Section("claude", "Claude", "API key, μοντέλο, οδηγίες, εμφάνιση", Icons.Rounded.AutoAwesome),
     Section("dash", "Ταμπλό συστήματος", "Τίτλος, χρώμα, μέγεθος, περιεχόμενο", Icons.Rounded.Insights),
     Section("about", "Backup & σχετικά", "Αντίγραφο ρυθμίσεων, προεπιλογή launcher", Icons.Rounded.Backup)
 )
@@ -361,7 +360,7 @@ private fun EffectsSection(p: Prefs) {
     Group("Ταχύτητες")
     SliderPref("Γενική ταχύτητα", p.animSpeed, 40..250, "%") { p.animSpeed = it }
     SliderPref("Αλλαγή σελίδων", p.speedPage, 40..250, "%") { p.speedPage = it }
-    SliderPref("Συρτάρι, Claude, ρυθμίσεις", p.speedOverlay, 40..250, "%") { p.speedOverlay = it }
+    SliderPref("Συρτάρι, αναζήτηση, ρυθμίσεις", p.speedOverlay, 40..250, "%") { p.speedOverlay = it }
     SliderPref("Μενού, φάκελοι, popups", p.speedSheet, 40..250, "%") { p.speedSheet = it }
     SliderPref("Σύρσιμο & παραμερισμός", p.speedDrag, 40..250, "%") { p.speedDrag = it }
     SliderPref("Πάτημα & εμφάνιση εικονιδίων", p.speedIcon, 40..250, "%") { p.speedIcon = it }

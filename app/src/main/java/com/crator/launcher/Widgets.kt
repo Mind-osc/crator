@@ -327,7 +327,6 @@ fun CratorWidget(
                 Triple("Εικονίδια", Icons.Rounded.Palette, "icons"),
                 Triple("Dock", Icons.Rounded.Dock, "dock"),
                 Triple("Εφέ", Icons.Rounded.Animation, "effects"),
-                Triple("Claude", Icons.Rounded.AutoAwesome, "claude"),
                 Triple("Όλες", Icons.Rounded.Tune, null)
             )
             Row(card.then(glass).then(press), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {

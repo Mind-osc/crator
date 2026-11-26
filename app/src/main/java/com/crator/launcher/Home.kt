@@ -202,10 +202,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         activity.setBlurBehind(if (overlay == Overlay.Claude || overlay == Overlay.Drawer) prefs.blurStrength * 3 else 0)
     }
 
+    fun openSearch(seed: String = "") {
+        drawerSeed = seed; drawerSearchMode = true; overlay = Overlay.Drawer
+    }
+
     fun act(a: GestureAction) {
         when (a) {
             GestureAction.None -> {}
-            GestureAction.Claude -> { claudeSeed = ""; overlay = Overlay.Claude }
+            GestureAction.Claude -> openSearch()
             GestureAction.Drawer -> overlay = Overlay.Drawer
             GestureAction.Notifications -> Actions.expandStatusBar(ctx, false)
             GestureAction.QuickSettings -> Actions.expandStatusBar(ctx, true)
@@ -219,9 +223,6 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         folderOpen = id
     }
 
-    fun openSearch(seed: String = "") {
-        drawerSeed = seed; drawerSearchMode = true; overlay = Overlay.Drawer
-    }
 
     fun openApp(app: AppInfo, b: android.graphics.Rect?) {
         Actions.launch(activity, app, b, prefs.openAnim)
@@ -468,7 +469,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                             stats, prefs, repo,
                             active = pager.currentPage == 0 && overlay == Overlay.None && resumed,
                             onOpenSettings = { openSettings(null) },
-                            onClaude = { act(GestureAction.Claude) },
+                            onClaude = { openSearch() },
                             onSearch = { openSearch() }
                         )
                     } else {
@@ -548,18 +549,6 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                     beginDrag(app.key, src) { sheetApp = app }
                 },
                 onClose = { folderOpen = null }
-            )
-        }
-        AnimatedVisibility(
-            overlay == Overlay.Claude,
-            enter = slideInVertically(Motion.lively(Motion.overlay)) { -it / 4 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(Motion.overlay), 0.88f, TransformOrigin(0.5f, 0f)),
-            exit = slideOutVertically(Motion.snappy(Motion.overlay)) { -it / 4 } + fadeOut(tween(dur(180))) + scaleOut(Motion.snappy(Motion.overlay), 0.94f, TransformOrigin(0.5f, 0f))
-        ) {
-            ClaudePanel(
-                chat, prefs, apps, claudeSeed,
-                onLaunch = ::openApp,
-                onClose = { overlay = Overlay.None },
-                onOpenSettings = { openSettings("claude") }
             )
         }
         AnimatedVisibility(
