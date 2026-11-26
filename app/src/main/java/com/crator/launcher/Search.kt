@@ -147,17 +147,13 @@ fun SearchScreen(
             .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
             .statusBarsPadding().navigationBarsPadding().imePadding()
     ) {
-        SearchField(
-            prefs, q, { q = it }, "Εφαρμογές, διευθύνσεις, αναζήτηση…", focus,
-            onGo = { go() },
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
-        )
-        if (q.isBlank()) {
-            // τίποτα πάνω: πάτημα στο κενό κλείνει
-            Box(Modifier.weight(1f).fillMaxWidth().clickable(MutableInteractionSource(), null) { onClose() })
-            return@Column
-        }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(12.dp, 0.dp, 12.dp, 24.dp)) {
+        // Αποτελέσματα πάνω από τη μπάρα, κολλημένα κάτω (κοντά στο δάχτυλο). Πάτημα στο κενό κλείνει.
+        if (q.isBlank()) Box(Modifier.weight(1f).fillMaxWidth().clickable(MutableInteractionSource(), null) { onClose() })
+        else LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom,
+            contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 4.dp)
+        ) {
             if (url != null) item("url") {
                 ActionRow(Icons.Rounded.Public, url.removePrefix("https://").removePrefix("http://"), "Άνοιγμα διεύθυνσης", true) { open(url) }
             }
@@ -198,6 +194,12 @@ fun SearchScreen(
                 }
             }
         }
+        // Η μπάρα ακριβώς πάνω από το πληκτρολόγιο
+        SearchField(
+            prefs, q, { q = it }, "Εφαρμογές, διευθύνσεις, αναζήτηση…", focus,
+            onGo = { go() },
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+        )
     }
 }
 
