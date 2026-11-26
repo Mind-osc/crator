@@ -362,10 +362,10 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             else if (t.center && drag.reflow?.let { r -> r.page == t.page } != true) null
             else t.page to t.cell
         }.distinctUntilChanged().collectLatest { key ->
-            if (key == null) { delay(160); drag.reflow = null; return@collectLatest }
+            if (key == null) { delay(260); drag.reflow = null; return@collectLatest }
             val (page, cell) = key
             if (drag.reflow?.let { it.page == page && it.insertAt == cell } == true) return@collectLatest
-            delay(190)
+            delay(70)
             val ex = (drag.source as? DragSource.Home)?.takeIf { it.page == page }?.cell
             val moves = prefs.reflowMoves(page, cell, ex)
             drag.reflow = if (moves.isNullOrEmpty()) null else DragState.Reflow(page, cell, moves)

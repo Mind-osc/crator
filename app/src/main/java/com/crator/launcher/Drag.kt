@@ -171,8 +171,8 @@ class DragState {
         val c = fx.toInt().coerceIn(0, g.cols - 1)
         val r = fy.toInt().coerceIn(0, g.rows - 1)
         val lx = fx - c; val ly = fy - r
-        // κέντρο εικονιδίου = φάκελος, άκρες = παραμερισμός
-        val center = lx in 0.24f..0.76f && ly in 0.1f..0.72f
+        // μόνο το «καρδιά» του εικονιδίου = φάκελος, όλο το υπόλοιπο = παραμερισμός (σαν το ταμπλό)
+        val center = lx in 0.34f..0.66f && ly in 0.2f..0.6f
         return DropTarget.Cell(currentPage, r * g.cols + c, center)
     }
 }
