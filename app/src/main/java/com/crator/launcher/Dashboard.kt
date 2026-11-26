@@ -746,7 +746,7 @@ fun Dashboard(
                             .graphicsLayer {
                                 val sc = editScale * lift
                                 scaleX = sc; scaleY = sc
-                                if (isDrag) { shadowElevation = 24f; alpha = 0.95f }
+                                if (isDrag) shadowElevation = 24f
                             }
                     ) {
                         unit(id, Modifier.fillMaxSize())
