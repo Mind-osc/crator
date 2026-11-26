@@ -130,6 +130,7 @@ fun AppDrawer(
     onClose: () -> Unit,
     drag: DragState? = null
 ) {
+    if (searchMode) { SearchScreen(apps, prefs, seed, onLaunch, onLong, onClose); return }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { drag?.drawerSlots?.clear() } }
     val hoverKey = drag?.let { d -> if (d.active && d.moved) (d.target() as? DropTarget.DrawerItem)?.key else null }
     val dragKey = drag?.let { d -> if (d.active && d.moved) d.item else null }
