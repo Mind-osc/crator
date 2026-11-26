@@ -98,6 +98,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Nfc
 import androidx.compose.material.icons.rounded.WifiTethering
@@ -664,14 +666,14 @@ fun Dashboard(
                     down.position.x >= r.left && down.position.x < r.right && down.position.y >= r.top && down.position.y < r.bottom
                 } ?: return@awaitEachGesture
                 val id = hit.key
-                val ok = androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                val ok = awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
                 if (ok == null) return@awaitEachGesture
                 grab = down.position - androidx.compose.ui.geometry.Offset(hit.value.left.toFloat(), hit.value.top.toFloat())
                 pointer = ok.position
                 draggingId = id
                 var lastSwap = 0L
                 try {
-                    androidx.compose.foundation.gestures.drag(ok.id) { c ->
+                    drag(ok.id) { c ->
                         c.consume()
                         pointer = c.position
                         val mine = rectsNow[id] ?: return@drag
