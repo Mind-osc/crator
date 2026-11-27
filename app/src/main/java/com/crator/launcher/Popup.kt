@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -94,6 +96,8 @@ fun AnchoredPopup(
     gap: Dp,
     onDismiss: () -> Unit,
     centered: Boolean = false,
+    side: Boolean = false,
+    corner: Dp = 26.dp,
     content: @Composable () -> Unit
 ) {
     BoxWithConstraints(
@@ -111,6 +115,7 @@ fun AnchoredPopup(
         val left = anchor.x < wPx / 2f
         val origin = when {
             centered -> TransformOrigin.Center
+            side -> TransformOrigin(if (left) 0f else 1f, 0.5f)
             else -> TransformOrigin(if (left) 0.12f else 0.88f, if (below) 0f else 1f)
         }
         Layout(
@@ -118,8 +123,8 @@ fun AnchoredPopup(
                 Box(
                     Modifier
                         .popupMotion(origin)
-                        .shadow(30.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                        .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.9f, tint = Color(0xFF09090C))
+                        .shadow(30.dp, RoundedCornerShape(corner), ambientColor = Color.Black, spotColor = Color.Black)
+                        .smokedGlass(RoundedCornerShape(corner), alpha = 0.9f, tint = Color(0xFF09090C))
                         .pointerInput(Unit) { detectTapGestures { } }
                 ) { content() }
             }
@@ -129,6 +134,10 @@ fun AnchoredPopup(
             val y: Float
             if (centered) {
                 x = anchor.x - p.width / 2f
+                y = anchor.y - p.height / 2f
+            } else if (side) {
+                // δίπλα στο εικονίδιο: δεξιά αν είναι αριστερά στην οθόνη, αλλιώς αριστερά
+                x = if (left) anchor.x + gapPx else anchor.x - gapPx - p.width
                 y = anchor.y - p.height / 2f
             } else {
                 val nudge = with(density) { 22.dp.toPx() }
@@ -169,6 +178,20 @@ private fun ActionTile(icon: ImageVector, tint: Color, name: String, badge: Imag
     }
 }
 
+/** Μίνιμαλ γραμμή μενού: πολύ μικρό εικονίδιο αριστερά, μικρά γράμματα */
+@Composable
+private fun MenuLine(icon: ImageVector, tint: Color, name: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(13.dp))
+        Spacer(Modifier.width(9.dp))
+        Text(name, color = Smoke.pearl, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 @Composable
 private fun TileGrid(tiles: List<@Composable () -> Unit>) {
     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -200,27 +223,27 @@ fun AppPopup(
     var folderPick by remember { mutableStateOf(false) }
     val gap = (prefs.iconSize * 0.75f).dp
 
-    AnchoredPopup(anchor, gap, onClose) {
-        Column(Modifier.widthIn(max = 232.dp)) {
+    AnchoredPopup(anchor, gap, onClose, side = true, corner = 16.dp) {
+        Column(Modifier.width(IntrinsicSize.Max).widthIn(min = 140.dp, max = 190.dp).padding(4.dp)) {
             if (shortcuts.isNotEmpty() && !folderPick) {
-                Column(Modifier.padding(6.dp, 6.dp, 6.dp, 0.dp)) {
+                Column {
                     shortcuts.forEach { si ->
                         val ic = remember(si.id) { repo.shortcutIcon(si) }
                         Row(
-                            Modifier.clip(RoundedCornerShape(16.dp)).clickable { repo.startShortcut(si); onClose() }
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { repo.startShortcut(si); onClose() }
+                                .padding(horizontal = 10.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (ic != null) androidx.compose.foundation.Image(ic, null, Modifier.size(22.dp))
-                            Spacer(Modifier.width(10.dp))
+                            if (ic != null) androidx.compose.foundation.Image(ic, null, Modifier.size(14.dp)) else Spacer(Modifier.size(14.dp))
+                            Spacer(Modifier.width(9.dp))
                             Text(
-                                (si.shortLabel ?: si.longLabel ?: "").toString(), color = Smoke.pearl, fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                (si.shortLabel ?: si.longLabel ?: "").toString(), color = Smoke.pearl, fontSize = 12.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
-                Box(Modifier.padding(horizontal = 14.dp).height(0.6.dp).width(200.dp).background(Color.White.copy(alpha = 0.1f)))
+                Box(Modifier.padding(horizontal = 10.dp, vertical = 3.dp).fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.08f)))
             }
             if (folderPick) {
                 // επιλογή φακέλου συρταριού
@@ -254,20 +277,20 @@ fun AppPopup(
                 val inDock = prefs.isInDock(app.key)
                 val hidden = app.key in prefs.hidden
                 val tiles = buildList<@Composable () -> Unit> {
-                    add { ActionTile(Icons.Rounded.Info, Act.info, "Πληροφορίες") { Actions.appInfo(activity, app); onClose() } }
+                    add { MenuLine(Icons.Rounded.Info, Act.info, "Πληροφορίες") { Actions.appInfo(activity, app); onClose() } }
                     add {
-                        ActionTile(Icons.Rounded.Home, Act.home, if (onHome) "Αφαίρεση από αρχική" else "Στην αρχική", if (onHome) Icons.Rounded.Remove else Icons.Rounded.Add) {
+                        MenuLine(Icons.Rounded.Home, Act.home, if (onHome) "Αφαίρεση από αρχική" else "Στην αρχική") {
                             if (onHome) prefs.removeFromHome(app.key) else onAddHome(); onClose()
                         }
                     }
                     add {
-                        ActionTile(Icons.Rounded.Dock, Act.dock, if (inDock) "Αφαίρεση από dock" else "Στο dock", if (inDock) Icons.Rounded.Remove else Icons.Rounded.Add) {
+                        MenuLine(Icons.Rounded.Dock, Act.dock, if (inDock) "Αφαίρεση από dock" else "Στο dock") {
                             if (inDock) prefs.removeFromDock(app.key) else prefs.addToDock(app.key); onClose()
                         }
                     }
                     if (ctx.inFolder != null) add {
-                        ActionTile(Icons.Rounded.FolderOpen, Act.folder, "Έξω από τον φάκελο", Icons.Rounded.Remove) {
-                            val id = ctx.inFolder ?: return@ActionTile
+                        MenuLine(Icons.Rounded.FolderOpen, Act.folder, "Έξω από τον φάκελο") {
+                            val id = ctx.inFolder ?: return@MenuLine
                             if (id in prefs.drawerFolders) {
                                 val f = prefs.folders[id]
                                 if (f != null) {
@@ -282,19 +305,19 @@ fun AppPopup(
                             onClose()
                         }
                     } else if (ctx.fromDrawer) add {
-                        ActionTile(Icons.Rounded.CreateNewFolder, Act.folder, "Σε φάκελο συρταριού") { folderPick = true }
+                        MenuLine(Icons.Rounded.CreateNewFolder, Act.folder, "Σε φάκελο συρταριού") { folderPick = true }
                     }
-                    if (hasWidgets) add { ActionTile(Icons.Rounded.Widgets, Act.widgets, "Widgets") { onWidgets() } }
-                    add { ActionTile(Icons.Rounded.Edit, Act.edit, "Μετονομασία") { renaming = true } }
-                    add { ActionTile(Icons.Rounded.Palette, Act.icon, "Εικονίδιο") { picking = true } }
+                    if (hasWidgets) add { MenuLine(Icons.Rounded.Widgets, Act.widgets, "Widgets") { onWidgets() } }
+                    add { MenuLine(Icons.Rounded.Edit, Act.edit, "Μετονομασία") { renaming = true } }
+                    add { MenuLine(Icons.Rounded.Palette, Act.icon, "Εικονίδιο") { picking = true } }
                     add {
-                        ActionTile(if (hidden) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, Act.hide, if (hidden) "Εμφάνιση" else "Απόκρυψη") {
+                        MenuLine(if (hidden) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, Act.hide, if (hidden) "Εμφάνιση" else "Απόκρυψη") {
                             prefs.hidden = if (hidden) prefs.hidden - app.key else prefs.hidden + app.key; onClose()
                         }
                     }
-                    add { ActionTile(Icons.Rounded.Delete, Act.danger, "Απεγκατάσταση") { Actions.uninstall(activity, app); onClose() } }
+                    add { MenuLine(Icons.Rounded.Delete, Act.danger, "Απεγκατάσταση") { Actions.uninstall(activity, app); onClose() } }
                 }
-                TileGrid(tiles)
+                Column { tiles.forEach { it() } }
             }
         }
     }
