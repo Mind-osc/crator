@@ -128,10 +128,14 @@ fun AppDrawer(
     onFolder: (String, Rect?) -> Unit,
     onFolderLong: (String) -> Unit,
     onClose: () -> Unit,
-    drag: DragState? = null
+    drag: DragState? = null,
+    onPull: ((Float) -> Unit)? = null,
+    onPullEnd: ((Float) -> Unit)? = null
 ) {
     if (searchMode) { SearchScreen(apps, prefs, seed, onLaunch, onLong, onClose); return }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { drag?.drawerSlots?.clear() } }
+    val pullCb by rememberUpdatedState(onPull)
+    val pullEndCb by rememberUpdatedState(onPullEnd)
     val hoverKey = drag?.let { d -> if (d.active && d.moved) (d.target() as? DropTarget.DrawerItem)?.key else null }
     val dragKey = drag?.let { d -> if (d.active && d.moved) d.item else null }
     var q by remember { mutableStateOf(seed) }
@@ -199,6 +203,7 @@ fun AppDrawer(
                     val vt = androidx.compose.ui.input.pointer.util.VelocityTracker()
                     vt.addPosition(down.uptimeMillis, down.position)
                     var total = 0f
+                    var pulled = 0f
                     var pulling = false
                     while (true) {
                         val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
@@ -209,18 +214,22 @@ fun AppDrawer(
                         vt.addPosition(ch.uptimeMillis, ch.position)
                         if (!pulling) {
                             total += dy
-                            if (total > slop) pulling = true
+                            if (total > slop) { pulling = true; pulled = 0f }
                             else if (total < -slop) break
-                        }
+                        } else pulled += dy
                         if (pulling) {
                             ch.consume()
-                            val v = (pull.value + dy).coerceAtLeast(0f)
-                            scope.launch { pull.snapTo(v) }
+                            // 1:1: το συρτάρι κατεβαίνει ακριβώς όσο το δάχτυλο (ένα σημείο ελέγχου στη ρίζα)
+                            val cb = pullCb
+                            if (cb != null) cb(pulled.coerceAtLeast(-60f))
+                            else scope.launch { pull.snapTo((pull.value + dy).coerceAtLeast(0f)) }
                         }
                     }
                     if (pulling) {
                         val vel = vt.calculateVelocity().y
-                        if (pull.value > size.height * 0.22f || vel > 1800f) close()
+                        val endCb = pullEndCb
+                        if (endCb != null) endCb(vel)
+                        else if (pull.value > size.height * 0.22f || vel > 1800f) close()
                         else scope.launch { pull.animateTo(0f, Motion.lively(Motion.overlay)) }
                     }
                 }

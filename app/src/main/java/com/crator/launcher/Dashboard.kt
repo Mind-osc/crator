@@ -820,12 +820,16 @@ fun Dashboard(
                         unit(id, Modifier.fillMaxSize())
                         if (editMode) {
                             val xs = if (isButton(id)) 22.dp else 26.dp
+                            // ορατό 22–26dp, αλλά περιοχή αφής 44dp
                             Box(
-                                Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).size(xs)
-                                    .smokedGlass(CircleShape, alpha = 0.9f, tint = Smoke.danger)
-                                    .clickable { remove(id) },
+                                Modifier.align(Alignment.TopEnd).offset(14.dp, (-14).dp).size(44.dp)
+                                    .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { remove(id) },
                                 contentAlignment = Alignment.Center
-                            ) { Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(xs * 0.55f)) }
+                            ) {
+                                Box(Modifier.size(xs).smokedGlass(CircleShape, alpha = 0.9f, tint = Smoke.danger), contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Rounded.Close, "Αφαίρεση", tint = Color.White, modifier = Modifier.size(xs * 0.55f))
+                                }
+                            }
                         }
                     }
                 }
@@ -1072,11 +1076,11 @@ private fun Num(value: String, unit: String, color: Color) {
 @Composable
 private fun Axis(a: String, b: String, c: String) {
     Row(Modifier.fillMaxWidth()) {
-        Text(a, color = Color(0xFF6E6E76), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+        Text(a, color = Color(0xFF8A8A92), fontSize = 9.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.weight(1f))
-        Text(b, color = Color(0xFF6E6E76), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+        Text(b, color = Color(0xFF8A8A92), fontSize = 9.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.weight(1f))
-        Text(c, color = Color(0xFF6E6E76), fontSize = 9.sp, fontWeight = FontWeight.Medium)
+        Text(c, color = Color(0xFF8A8A92), fontSize = 9.sp, fontWeight = FontWeight.Medium)
     }
 }
 

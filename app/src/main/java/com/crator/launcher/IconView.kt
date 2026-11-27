@@ -186,14 +186,14 @@ fun AppCell(
     }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val target = if (!pressed) 1f else when (prefs.pressEffect) {
-        PressEffect.Bounce -> 0.82f
-        PressEffect.Shrink -> 0.9f
+        PressEffect.Bounce -> 0.9f
+        PressEffect.Shrink -> 0.94f
         PressEffect.Tilt -> 0.95f
         PressEffect.None -> 1f
     }
     val sc by animateFloatAsState(
         target,
-        if (prefs.pressEffect == PressEffect.Bounce) spring(dampingRatio = 0.35f, stiffness = Spring.StiffnessMediumLow * Motion.icon * Motion.icon) else tween((120 / Motion.icon).toInt()),
+        if (prefs.pressEffect == PressEffect.Bounce) spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium * Motion.icon * Motion.icon) else tween((120 / Motion.icon).toInt()),
         label = "press"
     )
     val rot by animateFloatAsState(if (pressed && prefs.pressEffect == PressEffect.Tilt) -8f else 0f, label = "tilt")

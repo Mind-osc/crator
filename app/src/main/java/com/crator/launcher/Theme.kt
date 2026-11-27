@@ -95,6 +95,10 @@ object Motion {
     fun <T> lively(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.74f, stiffness = k(380f, c))
     fun <T> snappy(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.92f, stiffness = k(900f, c))
     fun <T> pop(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.46f, stiffness = k(520f, c))
+    /** Χωρίς αναπήδηση: για ό,τι ανοίγει/κλείνει με κουμπί (δεν ασκήθηκε δύναμη) */
+    fun <T> settle(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 1f, stiffness = k(520f, c))
+    /** Τέλος χειρονομίας: ελάχιστη αναπήδηση, ξεκινάει με την ταχύτητα του δαχτύλου */
+    fun <T> fling(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.84f, stiffness = k(420f, c))
     fun fadeMs(ms: Int, c: Float = 1f) = (ms / (speed * c)).toInt().coerceAtLeast(1)
 }
 

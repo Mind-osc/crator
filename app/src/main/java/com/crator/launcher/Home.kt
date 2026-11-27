@@ -200,11 +200,31 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     // Συρτάρι «διαδραστικό» (σαν Nova): η πρόοδος 0..1 ακολουθεί το δάχτυλο
     val drawerP = remember { androidx.compose.animation.core.Animatable(0f) }
     var drawerDragging by remember { mutableStateOf(false) }
+    var drawerReleasing by remember { mutableStateOf(false) }
+    // απόσταση που διανύει το δάχτυλο για 0→1: το συρτάρι κινείται ακριβώς όσο το δάχτυλο (1:1)
+    fun travel() = (rootSize.height * 0.42f).coerceAtLeast(1f)
+    fun drawerTrack(raw: Float) {
+        // λάστιχο: πέρα από το πλήρες άνοιγμα κινείται μόνο το 1/5 της απόστασης
+        val p = if (raw > 1f) 1f + (raw - 1f) * 0.2f else raw
+        drawerDragging = true
+        scope.launch { drawerP.snapTo(p.coerceIn(0f, 1.08f)) }
+    }
+    fun drawerRelease(velPxY: Float) {
+        // ανοίγει/κλείνει με απόσταση Ή ταχύτητα, και η κίνηση ξεκινά με την ταχύτητα του δαχτύλου
+        val open = when { velPxY < -700f -> true; velPxY > 700f -> false; else -> drawerP.value > 0.45f }
+        drawerDragging = false
+        drawerReleasing = true
+        overlay = if (open) Overlay.Drawer else if (overlay == Overlay.Drawer) Overlay.None else overlay
+        scope.launch {
+            try { drawerP.animateTo(if (open) 1f else 0f, Motion.fling(Motion.overlay), initialVelocity = -velPxY / travel()) }
+            finally { drawerReleasing = false }
+        }
+    }
     val drawerShown by remember { androidx.compose.runtime.derivedStateOf { drawerP.value > 0.001f } }
     LaunchedEffect(overlay) {
-        if (!drawerDragging) {
-            if (overlay == Overlay.Drawer) drawerP.animateTo(1f, Motion.lively(Motion.overlay))
-            else drawerP.animateTo(0f, Motion.snappy(Motion.overlay))
+        if (!drawerDragging && !drawerReleasing) {
+            if (overlay == Overlay.Drawer) drawerP.animateTo(1f, Motion.settle(Motion.overlay))
+            else drawerP.animateTo(0f, Motion.settle(Motion.overlay))
         }
     }
     LaunchedEffect(overlay) {
@@ -443,43 +463,38 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    val p = drawerP.value
-                    val sc = recede * (1f - 0.06f * p)
+                    val p = drawerP.value.coerceIn(0f, 1f)
+                    val sc = recede * (1f - 0.04f * p)
                     scaleX = sc; scaleY = sc
                     alpha = 1f - 0.92f * p
                 }
                 .blur(blur)
                 .pointerInput(Unit) {
                     var total = 0f
+                    var base = 0f
                     val vt = androidx.compose.ui.input.pointer.util.VelocityTracker()
-                    fun settle(open: Boolean) {
-                        drawerDragging = false
-                        if (open) {
-                            overlay = Overlay.Drawer
-                            scope.launch { drawerP.animateTo(1f, Motion.lively(Motion.overlay)) }
-                        } else scope.launch { drawerP.animateTo(0f, Motion.lively(Motion.overlay)) }
-                    }
                     detectVerticalDragGestures(
-                        onDragStart = { total = 0f; vt.resetTracking() },
+                        onDragStart = {
+                            total = 0f; vt.resetTracking()
+                            // «πιάνει» το συρτάρι ακόμα κι αν είναι στη μέση της κίνησης
+                            base = drawerP.value.coerceIn(0f, 1f)
+                            if (base > 0.01f) scope.launch { drawerP.stop() }
+                        },
                         onDragEnd = {
-                            if (drawerDragging) {
-                                val v = vt.calculateVelocity().y
-                                settle(v < -900f || (drawerP.value > 0.35f && v < 900f))
-                            } else if (gesturesOn) {
+                            if (drawerDragging) drawerRelease(vt.calculateVelocity().y)
+                            else if (gesturesOn) {
                                 if (total > 140) swipeDownA() else if (total < -140) swipeUpA()
                             }
                         },
-                        onDragCancel = { if (drawerDragging) settle(false) }
+                        onDragCancel = { if (drawerDragging) drawerRelease(0f) }
                     ) { change, dy ->
                         total += dy
                         if (!gesturesOn && !drawerDragging) return@detectVerticalDragGestures
                         change.consume()
                         vt.addPosition(change.uptimeMillis, change.position)
-                        // swipe πάνω: το συρτάρι εμφανίζεται όσο ανεβαίνει το δάχτυλο και κρύβεται αν το κατεβάσεις
-                        if (prefs.swipeUp == GestureAction.Drawer && (drawerDragging || total < -12f)) {
-                            drawerDragging = true
-                            val p = (-total / (rootSize.height * 0.42f).coerceAtLeast(1f)).coerceIn(0f, 1f)
-                            scope.launch { drawerP.snapTo(p) }
+                        // swipe πάνω: το συρτάρι είναι το δάχτυλο (1:1) όσο ακουμπάς
+                        if (prefs.swipeUp == GestureAction.Drawer && (drawerDragging || base > 0.01f || total < -12f)) {
+                            drawerTrack(base - total / travel())
                         }
                     }
                 }
@@ -566,11 +581,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         if (overlay == Overlay.Drawer || drawerDragging || drawerShown) Box(
             Modifier.fillMaxSize().graphicsLayer {
                 val p = drawerP.value
-                alpha = p
-                translationY = (1f - p) * size.height * 0.14f
-                val sc = 0.95f + 0.05f * p
-                scaleX = sc; scaleY = sc
-                transformOrigin = TransformOrigin(0.5f, 1f)
+                alpha = (p * 1.6f).coerceIn(0f, 1f)
+                translationY = (1f - p) * travel()
             }
         ) {
             AppDrawer(
@@ -580,7 +592,9 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 onFolder = ::openFolder,
                 onFolderLong = { id -> popupAnchor = drag.lastPointer; folderSheet = id },
                 onClose = { overlay = Overlay.None },
-                drag = drag
+                drag = drag,
+                onPull = { px -> drawerTrack(1f - px / travel()) },
+                onPullEnd = { v -> drawerRelease(v) }
             )
         }
         Presence(folderOpen) { id ->
