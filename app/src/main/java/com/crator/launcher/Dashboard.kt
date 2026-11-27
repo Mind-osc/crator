@@ -531,8 +531,8 @@ fun Dashboard(
                 verticalArrangement = Arrangement.Center
             ) {
                 when {
-                    app != null -> AppIcon(app, 24.dp, prefs)
-                    act != null -> Icon(act.icon, null, tint = fg, modifier = Modifier.size(23.dp))
+                    app != null -> AppIcon(app, 34.dp, prefs)
+                    act != null -> Icon(act.icon, null, tint = fg, modifier = Modifier.size(32.dp))
                 }
                 Box(Modifier.padding(top = 3.dp).size(4.dp).graphicsLayer { alpha = sel; scaleX = sel; scaleY = sel }.clip(CircleShape).background(accent))
             }
