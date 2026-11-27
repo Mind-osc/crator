@@ -212,6 +212,21 @@ fun Prefs.reflowMoves(page: Int, insertAt: Int, exclude: Int?): Map<Int, Int>? {
     return chain.zip(listOf(back) + chain.dropLast(1)).toMap()
 }
 
+/** Πιο κοντινή θέση (σε λεπτές γραμμές) όπου χωράει το στοιχείο, μέσα σε μικρή ακτίνα */
+fun Prefs.nearestFit(page: Int, r: Int, c: Int, sx: Int, sy: Int, exclude: Int?): Int? {
+    val f = fine.coerceIn(1, 4)
+    var best: Int? = null; var bestD = Int.MAX_VALUE
+    for (dr in -2 * f..2 * f) for (dc in -1..1) {
+        val rr = r + dr; val cc = c + dc
+        if (rr < 0 || cc < 0 || cc + sx > cols || rr + sy > gridRows) continue
+        val a = rr * cols + cc
+        if (!fits(page, a, sx, sy, exclude)) continue
+        val d = dr * dr + dc * dc * f * f * 4
+        if (d < bestD) { bestD = d; best = a }
+    }
+    return best
+}
+
 fun Prefs.applyReflow(page: Int, moves: Map<Int, Int>, insertAt: Int, item: String) {
     val pm = (pages.getOrNull(page) ?: emptyMap()).toMutableMap()
     val moved = moves.mapNotNull { (from, to) -> pm[from]?.let { to to it } }

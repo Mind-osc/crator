@@ -352,8 +352,17 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 val hit = occ[target.cell]
                 val hitItem = hit?.let { prefs.pages.getOrNull(target.page)?.get(it) }
                 val folderDrop = target.center
-                val canShift = !Item.isSized(item) && hit != null && !folderDrop
+                val canShift = !Item.isSized(item) && hit != null && !folderDrop && prefs.fine <= 1
+                // με ενδιάμεσες γραμμές: αν δεν χωράει ακριβώς, κουμπώνει στην πιο κοντινή ελεύθερη θέση
+                val near = if (prefs.fine > 1 && !folderDrop && !prefs.fits(target.page, anchor, sx, sy, exclude))
+                    prefs.nearestFit(target.page, r, c, sx, sy, exclude) else null
                 when {
+                    near != null -> {
+                        if (src is DragSource.Home && src.page == target.page && src.cell == near) return
+                        removeFromSource(src, item)
+                        prefs.setHome(target.page, near, item)
+                        drag.recent = item
+                    }
                     canShift -> {
                         val moves = pendingReflow?.takeIf { it.page == target.page && it.insertAt == target.cell }?.moves
                             ?: prefs.reflowMoves(target.page, target.cell, exclude)
@@ -386,6 +395,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     }
     drag.onDrop = ::handleDrop
     drag.spanOf = { prefs.spanOf(it) }
+    drag.snapOf = snap@{ t, it ->
+        if (prefs.fine <= 1 || t.center) return@snap null
+        val (sx, sy) = prefs.spanOf(it)
+        val r = (t.cell / prefs.cols).coerceAtMost(prefs.gridRows - sy).coerceAtLeast(0)
+        val c = (t.cell % prefs.cols).coerceAtMost(prefs.cols - sx).coerceAtLeast(0)
+        val ex = (drag.source as? DragSource.Home)?.takeIf { s -> s.page == t.page }?.cell
+        if (prefs.fits(t.page, r * prefs.cols + c, sx, sy, ex)) null else prefs.nearestFit(t.page, r, c, sx, sy, ex)
+    }
     // Παραμερισμός: όταν κρατάς λίγο στην άκρη ενός εικονιδίου, τα άλλα κάνουν χώρο
     LaunchedEffect(drag.active) {
         if (!drag.active) return@LaunchedEffect

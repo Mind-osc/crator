@@ -80,6 +80,8 @@ class DragState {
     private var onTap: (() -> Unit)? = null
     var currentPage = 0
     var spanOf: (String) -> Pair<Int, Int> = { Item.span(it) }
+    /** τελική άγκυρα όταν το στοιχείο κουμπώνει σε κοντινή ελεύθερη θέση */
+    var snapOf: (DropTarget.Cell, String) -> Int? = { _, _ -> null }
     /** Όσο είναι ανοιχτό το συρτάρι, οι στόχοι είναι τα εικονίδια του συρταριού */
     var drawerOpen = false
     val drawerSlots = HashMap<String, Rect>()
@@ -119,7 +121,9 @@ class DragState {
                 val g = grids[t.page] ?: return pos
                 val (sx0, sy0) = spanOf(item)
                 val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)
-                val c = (t.cell % g.cols).coerceAtMost(g.cols - sx); val r = (t.cell / g.cols).coerceAtMost(g.rows - sy)
+                val snap = snapOf(t, item)
+                val c = snap?.let { it % g.cols } ?: (t.cell % g.cols).coerceAtMost(g.cols - sx)
+                val r = snap?.let { it / g.cols } ?: (t.cell / g.cols).coerceAtMost(g.rows - sy)
                 val cw = g.rect.width / g.cols; val ch = g.rect.height / g.rows
                 Offset(g.rect.left + (c + sx / 2f) * cw, g.rect.top + (r + sy / 2f) * ch)
             }
