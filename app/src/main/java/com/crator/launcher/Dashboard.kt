@@ -534,12 +534,6 @@ fun Dashboard(
                     app != null -> AppIcon(app, 24.dp, prefs)
                     act != null -> Icon(act.icon, null, tint = fg, modifier = Modifier.size(23.dp))
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    app?.label ?: act?.label ?: "", color = androidx.compose.ui.graphics.lerp(Color(0xFFB4B4BC), Smoke.pearl, sel),
-                    fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp)
-                )
                 Box(Modifier.padding(top = 3.dp).size(4.dp).graphicsLayer { alpha = sel; scaleX = sel; scaleY = sel }.clip(CircleShape).background(accent))
             }
         }
@@ -639,31 +633,11 @@ fun Dashboard(
     ) {
     Box(Modifier.fillMaxSize()) {
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)
-            .shadow(28.dp, RoundedCornerShape(36.dp), ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(RoundedCornerShape(36.dp))
-            .background(Color(prefs.dashColor).copy(alpha = prefs.dashOpacity / 100f))
-            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.045f), Color.Transparent, Color.Transparent)))
-            .border(0.8.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.04f))), RoundedCornerShape(36.dp))
-            .padding(10.dp),
+        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Κεφαλίδα
-        Row(Modifier.fillMaxWidth().padding(6.dp, 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    prefs.dashTitle.ifEmpty { " " }, color = Smoke.pearl, fontSize = 30.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-1).sp,
-                    modifier = Modifier.combinedClickable(onClick = {}, onLongClick = { editTitle = true })
-                )
-                if (prefs.dashShowSub) Text(
-                    "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}, σε λειτουργία ${fmtUptime(stats.uptime)}",
-                    color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
-                    modifier = Modifier.combinedClickable(onClick = {}, onLongClick = {
-                        prefs.dashShowSub = false
-                        android.widget.Toast.makeText(ctx, "Κρύφτηκε. Επαναφορά από Ρυθμίσεις → Ταμπλό", android.widget.Toast.LENGTH_SHORT).show()
-                    })
-                )
-            }
+        // Μόνο τα κουμπιά επεξεργασίας πάνω δεξιά (χωρίς τίτλο)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.animation.AnimatedVisibility(
                 editMode,
                 enter = androidx.compose.animation.scaleIn(Motion.pop(Motion.sheet)) + androidx.compose.animation.fadeIn(),
@@ -686,7 +660,7 @@ fun Dashboard(
         // Γραμμές: κάρτες ανά 2, κουμπιά ανά 4, με τη σειρά που τα έχεις βάλει
         val rows = mutableListOf<MutableList<String>>()
         for (id in live) {
-            val cap = if (isButton(id)) 4 else 2
+            val cap = if (isButton(id)) 5 else 2
             val last = rows.lastOrNull()
             if (last != null && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
         }
@@ -695,23 +669,42 @@ fun Dashboard(
         val gapPx = with(LocalDensity.current) { 8.dp.roundToPx() }
         val capsules = mutableListOf<androidx.compose.ui.unit.IntRect>()
         val cardRowPx = with(LocalDensity.current) { 100.dp.roundToPx() }
-        val btnRowPx = with(LocalDensity.current) { 70.dp.roundToPx() }
+        val btnRowPx = with(LocalDensity.current) { 58.dp.roundToPx() }
+        val padPx = with(LocalDensity.current) { 10.dp.roundToPx() }
+        val pillPadPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+        var board = androidx.compose.ui.unit.IntRect.Zero
         val rects: Map<String, androidx.compose.ui.unit.IntRect> = run {
             val m = LinkedHashMap<String, androidx.compose.ui.unit.IntRect>()
-            val w = gridSize.width; val h = gridSize.height
+            val fullW = gridSize.width; val fullH = gridSize.height
+            // ο πίνακας: ίδιο κενό γύρω-γύρω (πάνω = πλάγια)
+            val w = fullW - padPx * 2; val h = fullH - padPx * 2
             if (w > 0 && h > 0 && rows.isNotEmpty()) {
                 // σταθερά ύψη (κάρτα ~100dp, κουμπιά ~70dp)· αν δεν χωράνε, μικραίνουν αναλογικά
                 val want = rows.map { if (isButton(it[0])) btnRowPx else cardRowPx }
                 val total = want.sum() + gapPx * (rows.size - 1)
                 val k = if (total > h) (h - gapPx * (rows.size - 1)).toFloat() / want.sum() else 1f
                 val used = (want.sum() * k).toInt() + gapPx * (rows.size - 1)
-                var y = (h - used).coerceAtLeast(0)
+                var y = padPx + (h - used).coerceAtLeast(0)
+                board = androidx.compose.ui.unit.IntRect(0, y - padPx, fullW, fullH)
+                val btnW = (w - pillPadPx * 2) / 5
                 rows.forEachIndexed { r, row ->
                     val rh = (want[r] * k).toInt()
-                    val cols = if (isButton(row[0])) 4 else 2
-                    if (isButton(row[0])) capsules += androidx.compose.ui.unit.IntRect(0, y, w, y + rh)
-                    val cw = (w - gapPx * (cols - 1)) / cols
-                    row.forEachIndexed { c, id -> m[id] = androidx.compose.ui.unit.IntRect(c * (cw + gapPx), y, c * (cw + gapPx) + cw, y + rh) }
+                    if (isButton(row[0])) {
+                        // κάψουλα όσο χρειάζεται, στο κέντρο· στενεύει όταν βγάζεις κουμπί
+                        val pillW = row.size * btnW + pillPadPx * 2
+                        val x0 = padPx + (w - pillW) / 2
+                        capsules += androidx.compose.ui.unit.IntRect(x0, y, x0 + pillW, y + rh)
+                        row.forEachIndexed { c, id ->
+                            val x = x0 + pillPadPx + c * btnW
+                            m[id] = androidx.compose.ui.unit.IntRect(x, y, x + btnW, y + rh)
+                        }
+                    } else {
+                        val cw = (w - gapPx) / 2
+                        row.forEachIndexed { c, id ->
+                            val x = padPx + c * (cw + gapPx)
+                            m[id] = androidx.compose.ui.unit.IntRect(x, y, x + cw, y + rh)
+                        }
+                    }
                     y += rh + gapPx
                 }
             }
@@ -780,6 +773,20 @@ fun Dashboard(
                 .onSizeChanged { gridSize = it }
                 .then(dragInput)
         ) {
+            // ο ανθρακί πίνακας: μόνο πίσω από τα widgets, καμπύλες ομόκεντρες με τις κάρτες (28 + 10)
+            if (board.height > 0) {
+                val d1 = LocalDensity.current
+                val bs = RoundedCornerShape(38.dp)
+                Box(
+                    Modifier.offset { board.topLeft }
+                        .size(with(d1) { board.width.toDp() }, with(d1) { board.height.toDp() })
+                        .shadow(24.dp, bs, ambientColor = Color.Black, spotColor = Color.Black)
+                        .clip(bs)
+                        .background(Color(prefs.dashColor).copy(alpha = prefs.dashOpacity / 100f))
+                        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.045f), Color.Transparent)))
+                        .border(0.8.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.03f))), bs)
+                )
+            }
             // κάθε σειρά κουμπιών = μία μπάρα-κάψουλα (σαν τη μπάρα της Pinterest)
             capsules.forEach { r ->
                 val d2 = LocalDensity.current
