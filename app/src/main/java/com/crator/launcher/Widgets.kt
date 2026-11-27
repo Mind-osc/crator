@@ -242,9 +242,13 @@ fun SystemWidget(id: Int, widgets: WidgetController, prefs: Prefs, onLongPress: 
         val h = maxHeight.value
         AndroidView(
             factory = { ctx ->
-                widgets.host.createView(ctx, id, info).also { v -> (v as? CratorWidgetView)?.onLongPress = { lp() } }
+                widgets.host.createView(ctx, id, info).also { v ->
+                    (v as? CratorWidgetView)?.onLongPress = { lp() }
+                    // χωρίς το προεπιλεγμένο κενό του Android γύρω από το widget
+                    v.setPadding(0, 0, 0, 0)
+                }
             },
-            update = { v -> runCatching { v.updateAppWidgetSize(Bundle(), listOf(SizeF(w, h))) } },
+            update = { v -> v.setPadding(0, 0, 0, 0); runCatching { v.updateAppWidgetSize(Bundle(), listOf(SizeF(w, h))) } },
             modifier = Modifier.fillMaxSize()
         )
     }

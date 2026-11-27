@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -251,7 +252,7 @@ fun AppDrawer(
             .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.05f), Color.Transparent)))
             .border(0.6.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
-            .pointerInput(Unit) { androidx.compose.foundation.gestures.detectTapGestures { } }
+            .pointerInput(Unit) { detectTapGestures { } }
     ) {
         Box(
             Modifier.fillMaxWidth().height(26.dp).pointerInput(Unit) {

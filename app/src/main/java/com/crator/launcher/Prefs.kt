@@ -232,7 +232,7 @@ class Prefs(private val context: Context) {
     var dashHiddenShortcuts by PrefState(loadList("dash_hidden_sc").toSet()) { saveList("dash_hidden_sc", it.toList()) }
 
     // ---------- Widgets ----------
-    var widgetPadding by int("widget_pad", 6)
+    var widgetPadding by int("widget_pad", 2)
     var widgetCorner by int("widget_corner", 22)
 
     private fun loadFolders(): Map<String, Folder> = runCatching {
