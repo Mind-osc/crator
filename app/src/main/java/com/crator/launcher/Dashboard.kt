@@ -674,6 +674,9 @@ fun Dashboard(
         val padPx = with(LocalDensity.current) { 10.dp.roundToPx() }
         val pillPadPx = with(LocalDensity.current) { 8.dp.roundToPx() }
         var board = androidx.compose.ui.unit.IntRect.Zero
+        val dDash = LocalDensity.current.density
+        var liftLive by remember { mutableStateOf<Float?>(null) } // px όσο το σέρνεις
+        val liftPx = liftLive ?: (prefs.dashLift * dDash)
         val rects: Map<String, androidx.compose.ui.unit.IntRect> = run {
             val m = LinkedHashMap<String, androidx.compose.ui.unit.IntRect>()
             val fullW = gridSize.width; val fullH = gridSize.height
@@ -685,8 +688,10 @@ fun Dashboard(
                 val total = want.sum() + gapPx * (rows.size - 1)
                 val k = if (total > h) (h - gapPx * (rows.size - 1)).toFloat() / want.sum() else 1f
                 val used = (want.sum() * k).toInt() + gapPx * (rows.size - 1)
-                var y = padPx + (h - used).coerceAtLeast(0)
-                board = androidx.compose.ui.unit.IntRect(0, y - padPx, fullW, fullH)
+                val free = (h - used).coerceAtLeast(0)
+                val lift = liftPx.toInt().coerceIn(0, free)
+                var y = padPx + free - lift
+                board = androidx.compose.ui.unit.IntRect(0, y - padPx, fullW, fullH - lift)
                 val btnW = (w - pillPadPx * 2) / 5
                 rows.forEachIndexed { r, row ->
                     val rh = (want[r] * k).toInt()
@@ -712,6 +717,9 @@ fun Dashboard(
             m
         }
         val rectsNow by androidx.compose.runtime.rememberUpdatedState(rects)
+        val boardNow by androidx.compose.runtime.rememberUpdatedState(board)
+        val liftNow by androidx.compose.runtime.rememberUpdatedState(liftPx)
+        val hapticDash = androidx.compose.ui.platform.LocalHapticFeedback.current
         val liveNow by androidx.compose.runtime.rememberUpdatedState(live)
 
         // Η αφή (σαν τα εικονίδια):
@@ -727,7 +735,25 @@ fun Dashboard(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val hit = rectsNow.entries.firstOrNull { (_, r) ->
                         down.position.x >= r.left && down.position.x < r.right && down.position.y >= r.top && down.position.y < r.bottom
-                    } ?: return@awaitEachGesture
+                    }
+                    if (hit == null) {
+                        // παρατεταμένο πάτημα στον πίνακα (όχι σε κάρτα) → τον μετακινείς πάνω/κάτω όσο ακριβώς θες
+                        val b = boardNow
+                        if (down.position.y < b.top || down.position.y > b.bottom) return@awaitEachGesture
+                        awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                        hapticDash.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        val startLift = liftNow
+                        val maxLift = startLift + b.top.toFloat()
+                        val y0 = down.position.y
+                        liftLive = startLift
+                        drag(down.id) { c ->
+                            c.consume()
+                            liftLive = (startLift + (y0 - c.position.y)).coerceIn(0f, maxLift)
+                        }
+                        prefs.dashLift = ((liftLive ?: startLift) / dDash).toInt()
+                        liftLive = null
+                        return@awaitEachGesture
+                    }
                     val id = hit.key
                     val start = if (editNow) {
                         awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }

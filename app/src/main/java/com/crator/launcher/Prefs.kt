@@ -226,6 +226,8 @@ class Prefs(private val context: Context) {
     var dashColor by int("dash_color", 0xFF1C1C21.toInt())
     var dashOpacity by int("dash_opacity", 88)
     var dashScale by int("dash_scale", 100)
+    /** πόσο ψηλά από το κάτω μέρος κάθεται ο πίνακας του ταμπλό (dp) */
+    var dashLift by int("dash_lift", 0)
     var dashShortcuts by bool("dash_shortcuts", true)
     var dashCpu by bool("dash_cpu", true)
     var dashMem by bool("dash_mem", true)
