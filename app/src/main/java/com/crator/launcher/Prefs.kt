@@ -214,8 +214,8 @@ class Prefs(private val context: Context) {
     // ---------- Ταμπλό: εμφάνιση ----------
     var dashTitle by str("dash_title", "Σύστημα")
     var dashShowSub by bool("dash_sub", true)
-    var dashColor by int("dash_color", 0xFF14151D.toInt())
-    var dashOpacity by int("dash_opacity", 58)
+    var dashColor by int("dash_color", 0xFF050507.toInt())
+    var dashOpacity by int("dash_opacity", 82)
     var dashScale by int("dash_scale", 100)
     var dashShortcuts by bool("dash_shortcuts", true)
     var dashCpu by bool("dash_cpu", true)

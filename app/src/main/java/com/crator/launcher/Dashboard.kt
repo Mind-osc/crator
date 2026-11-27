@@ -94,6 +94,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -495,31 +496,41 @@ fun Dashboard(
 
     @Composable
     fun button(id: String, mod: Modifier) {
-        val (tc, ta) = LocalDashStyle.current
         val app = if (id.startsWith("app:")) byKey[id.removePrefix("app:")] else null
         val act = if (id.startsWith("sc:")) CATALOG_BY_ID[id.removePrefix("sc:")] else null
         val on = act?.id == "torch" && torch
-        Column(
-            mod.smokedGlass(RoundedCornerShape(22.dp), alpha = if (on) 0.9f else ta, tint = if (on) accent else tc)
-                .clickable(enabled = !editMode) {
-                    when {
-                        app != null -> Actions.launch(ctx as android.app.Activity, app, null, prefs.openAnim)
-                        act != null -> act.run(ctx)
-                    }
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            when {
-                app != null -> AppIcon(app, 30.dp, prefs)
-                act != null -> Icon(act.icon, null, tint = if (on) Color.Black else Smoke.pearl, modifier = Modifier.size(28.dp))
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                app?.label ?: act?.label ?: "", color = if (on) Color.Black else Smoke.pearl.copy(alpha = 0.85f),
-                fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp)
+        val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        val pressed by src.collectIsPressedAsState()
+        val hl by animateFloatAsState(if (pressed || on) 1f else 0f, Motion.lively(Motion.icon), label = "hl")
+        Box(mod.padding(4.dp), contentAlignment = Alignment.Center) {
+            // «μαξιλαράκι» που φουσκώνει στο πάτημα (σαν το επιλεγμένο στοιχείο της μπάρας)
+            Box(
+                Modifier.fillMaxSize().graphicsLayer { alpha = hl; val sc = 0.8f + 0.2f * hl; scaleX = sc; scaleY = sc }
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (on) Brush.verticalGradient(listOf(accent, accent.copy(alpha = 0.75f))) else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.08f))))
             )
+            Column(
+                Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp))
+                    .clickable(interactionSource = src, indication = null, enabled = !editMode) {
+                        when {
+                            app != null -> Actions.launch(ctx as android.app.Activity, app, null, prefs.openAnim)
+                            act != null -> act.run(ctx)
+                        }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                when {
+                    app != null -> AppIcon(app, 26.dp, prefs)
+                    act != null -> Icon(act.icon, null, tint = if (on) Color.Black else Smoke.pearl, modifier = Modifier.size(24.dp))
+                }
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    app?.label ?: act?.label ?: "", color = if (on) Color.Black else Smoke.pearl.copy(alpha = 0.78f),
+                    fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp)
+                )
+            }
         }
     }
 
@@ -527,52 +538,48 @@ fun Dashboard(
     fun unit(id: String, mod: Modifier) {
         if (isButton(id)) { button(id, mod); return }
         when (id) {
-            "cpu" -> Card(mod) {
-                Header("CPU", "%.0f%%".format(stats.cpuPct), accent)
-                Sub("${stats.cores.size} πυρήνες" + if (stats.cpuIsFreq) ", συχνότητα" else "")
+            "cpu" -> LiveCard(mod) {
+                LiveLabel("CPU", "${stats.cores.size} πυρήνες")
+                BigValue("%.0f%%".format(stats.cpuPct), Live.cpu)
+                BarSpark(stats.cpuHist, 100f, Live.cpu, Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp))
+            }
+            "ram" -> LiveCard(mod) {
+                LiveLabel("RAM")
+                BigValue("${(stats.ramUsed * 100 / stats.ramTotal)}%", Live.ram)
                 Spacer(Modifier.weight(1f))
-                LineChart(stats.cpuHist, 100f, accent, height = 40)
-                Row(Modifier.fillMaxWidth().height(14.dp).padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
-                    stats.cores.forEach { (cur, max) ->
-                        val f = if (max > 0) (cur.toFloat() / max).coerceIn(0.08f, 1f) else 0.08f
-                        Box(Modifier.weight(1f).fillMaxHeight(f).clip(RoundedCornerShape(2.dp)).background(accent.copy(alpha = 0.4f + 0.6f * f)))
-                    }
-                }
+                Capsule(stats.ramUsed.toFloat() / stats.ramTotal, Live.ram, Modifier.fillMaxWidth().height(14.dp))
+                Spacer(Modifier.height(8.dp))
+                Small("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}")
             }
-            "ram" -> Card(mod) {
-                Header("RAM", "", accent)
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Ring(stats.ramUsed.toFloat() / stats.ramTotal, Color(0xFF7DE3C2), "${(stats.ramUsed * 100 / stats.ramTotal)}%", size = 66)
+            "storage" -> LiveCard(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
+                LiveLabel("Χώρος")
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                    ArcGauge(stats.stUsed.toFloat() / stats.stTotal, Live.storage, Modifier.fillMaxSize().padding(top = 6.dp))
+                    BigValue("${(stats.stUsed * 100 / stats.stTotal)}%", Live.storage, 24)
                 }
-                Sub("${fmtBytes(stats.ramUsed)} / ${fmtBytes(stats.ramTotal)}")
+                Small("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}")
             }
-            "storage" -> Card(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }) {
-                Header("Χώρος", "", accent)
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Ring(stats.stUsed.toFloat() / stats.stTotal, Color(0xFFFFB86B), "${(stats.stUsed * 100 / stats.stTotal)}%", size = 66)
-                }
-                Sub("Ελεύθερα ${fmtBytes(stats.stTotal - stats.stUsed)}")
+            "net" -> LiveCard(mod) {
+                LiveLabel("Δίκτυο", stats.netType)
+                BigValue("↓ ${fmtRate(stats.rxRate)}", Live.net, 22)
+                DotColumns(stats.downHist, Live.net, Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.dp))
+                Small("↑ ${fmtRate(stats.txRate)}")
             }
-            "net" -> Card(mod) {
-                Header("Δίκτυο", "↓ ${fmtRate(stats.rxRate)}", Color(0xFF6FC3FF))
-                Sub("↑ ${fmtRate(stats.txRate)}, ${stats.netType}")
+            "battery" -> LiveCard(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
+                LiveLabel("Μπαταρία", stats.batStatus)
+                BigValue("${stats.batLevel}%", Live.battery)
                 Spacer(Modifier.weight(1f))
-                DualChart(stats.downHist, stats.upHist, Color(0xFF6FC3FF), Color(0xFFFF7FB0), height = 44)
+                BatteryShape(stats.batLevel / 100f, Live.battery, Modifier.fillMaxWidth().height(24.dp))
+                Spacer(Modifier.height(8.dp))
+                Small("%.1f °C, ${stats.batCurrent} mA".format(stats.batTemp))
             }
-            "battery" -> Card(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
-                Header("Μπαταρία", "", Color(0xFF9BE37D))
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Ring(stats.batLevel / 100f, Color(0xFF9BE37D), "${stats.batLevel}%", size = 66)
-                }
-                Sub("%.1f °C, ${stats.batCurrent} mA".format(stats.batTemp))
-            }
-            "thermal" -> Card(mod) {
-                Header("Θερμικά", "", Color(0xFFFF8A65))
+            "thermal" -> LiveCard(mod) {
+                LiveLabel("Θερμικά")
+                BigValue(stats.thermal, Live.thermal, 24)
                 Spacer(Modifier.weight(1f))
-                Text(stats.thermal, color = Color(0xFFFF8A65), fontSize = 24.sp, fontWeight = FontWeight.Light)
-                stats.headroom?.let { h -> Bar((1f - h).coerceIn(0f, 1f), Color(0xFFFF8A65)) }
-                Spacer(Modifier.weight(1f))
-                Sub(stats.batStatus)
+                TickRuler((1f - (stats.headroom ?: 0.85f)).coerceIn(0.03f, 1f), Live.thermal, Modifier.fillMaxWidth().height(30.dp))
+                Spacer(Modifier.height(8.dp))
+                Small("Περιθώριο πριν το throttling")
             }
         }
     }
@@ -592,7 +599,16 @@ fun Dashboard(
         LocalDashStyle provides (Color(prefs.dashColor) to prefs.dashOpacity / 100f)
     ) {
     Box(Modifier.fillMaxSize()) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)
+            .shadow(28.dp, RoundedCornerShape(36.dp), ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(RoundedCornerShape(36.dp))
+            .background(Color(prefs.dashColor).copy(alpha = prefs.dashOpacity / 100f))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.045f), Color.Transparent, Color.Transparent)))
+            .border(0.8.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.04f))), RoundedCornerShape(36.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         // Κεφαλίδα
         Row(Modifier.fillMaxWidth().padding(6.dp, 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -638,6 +654,7 @@ fun Dashboard(
 
         // Θέσεις (σε px μέσα στο πλέγμα): γραμμή καρτών = 1 μερίδα, γραμμή κουμπιών = 0,62
         val gapPx = with(LocalDensity.current) { 8.dp.roundToPx() }
+        val capsules = mutableListOf<androidx.compose.ui.unit.IntRect>()
         val rects: Map<String, androidx.compose.ui.unit.IntRect> = run {
             val m = LinkedHashMap<String, androidx.compose.ui.unit.IntRect>()
             val w = gridSize.width; val h = gridSize.height
@@ -649,6 +666,7 @@ fun Dashboard(
                 rows.forEachIndexed { r, row ->
                     val rh = (avail * weights[r] / sum).toInt()
                     val cols = if (isButton(row[0])) 4 else 2
+                    if (isButton(row[0])) capsules += androidx.compose.ui.unit.IntRect(0, y, w, y + rh)
                     val cw = (w - gapPx * (cols - 1)) / cols
                     row.forEachIndexed { c, id -> m[id] = androidx.compose.ui.unit.IntRect(c * (cw + gapPx), y, c * (cw + gapPx) + cw, y + rh) }
                     y += rh + gapPx
@@ -719,6 +737,17 @@ fun Dashboard(
                 .onSizeChanged { gridSize = it }
                 .then(dragInput)
         ) {
+            // κάθε σειρά κουμπιών = μία μπάρα-κάψουλα (σαν τη μπάρα της Pinterest)
+            capsules.forEach { r ->
+                val d2 = LocalDensity.current
+                Box(
+                    Modifier.offset { r.topLeft }
+                        .size(with(d2) { r.width.toDp() }, with(d2) { r.height.toDp() })
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.075f), Color.White.copy(alpha = 0.035f))))
+                        .border(0.6.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(50))
+                )
+            }
             if (rows.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Άδειο ταμπλό. Πάτα + για να προσθέσεις.", color = Smoke.mist, fontSize = 13.sp)
             }
@@ -957,5 +986,168 @@ fun FitToHeight(modifier: Modifier = Modifier, content: @Composable () -> Unit) 
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
             }
         }
+    }
+}
+
+// ---------------- Στυλ «Live Activity» ----------------
+
+private object Live {
+    val cpu = listOf(Color(0xFF8B5CF6), Color(0xFFEC4899))
+    val ram = listOf(Color(0xFF2DD4BF), Color(0xFF22D3EE))
+    val storage = listOf(Color(0xFFFBBF24), Color(0xFFF97316))
+    val net = listOf(Color(0xFF3B82F6), Color(0xFF22D3EE))
+    val battery = listOf(Color(0xFFA3E635), Color(0xFF22C55E))
+    val thermal = listOf(Color(0xFFFB923C), Color(0xFFEF4444))
+}
+
+@Composable
+private fun LiveCard(modifier: Modifier = Modifier, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(26.dp)
+    Column(
+        modifier.clip(shape)
+            .background(Color(0xFF0E0E12).copy(alpha = 0.92f))
+            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.06f), Color.Transparent)))
+            .border(0.6.dp, Color.White.copy(alpha = 0.08f), shape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun LiveLabel(t: String, trailing: String? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(t, color = Smoke.pearl.copy(alpha = 0.9f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+        if (trailing != null) Text(trailing, color = Smoke.mist, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun BigValue(t: String, colors: List<Color>, size: Int = 32) {
+    Text(
+        t, maxLines = 1,
+        style = androidx.compose.ui.text.TextStyle(
+            brush = Brush.horizontalGradient(colors), fontSize = size.sp, fontWeight = FontWeight.Light,
+            fontFamily = Manrope, letterSpacing = (-1).sp, fontFeatureSettings = "tnum"
+        )
+    )
+}
+
+@Composable
+private fun Small(t: String) = Text(t, color = Smoke.mist, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+
+/** Κάθετες στρογγυλεμένες μπάρες με διαβάθμιση (οι παλιότερες πιο αχνές) */
+@Composable
+fun BarSpark(values: List<Float>, max: Float?, colors: List<Color>, modifier: Modifier) {
+    Canvas(modifier) {
+        val slots = 22
+        val v = values.takeLast(slots)
+        if (v.isEmpty()) return@Canvas
+        val mx = max ?: (v.maxOrNull() ?: 1f).coerceAtLeast(1f)
+        val step = size.width / slots
+        val bw = step * 0.58f
+        val start = slots - v.size
+        v.forEachIndexed { i, x ->
+            val h = (x / mx).coerceIn(0.06f, 1f) * size.height
+            val left = (start + i) * step + (step - bw) / 2
+            drawRoundRect(
+                brush = Brush.verticalGradient(colors.reversed(), startY = size.height - h, endY = size.height),
+                topLeft = Offset(left, size.height - h),
+                size = Size(bw, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(bw / 2),
+                alpha = 0.3f + 0.7f * ((i + 1f) / v.size)
+            )
+        }
+    }
+}
+
+/** Στήλες από τελείες (σαν τα γραφήματα παλμών) */
+@Composable
+fun DotColumns(values: List<Float>, colors: List<Color>, modifier: Modifier) {
+    Canvas(modifier) {
+        val cols = 16
+        val v = values.takeLast(cols)
+        val mx = (v.maxOrNull() ?: 1f).coerceAtLeast(8f)
+        val stepX = size.width / cols
+        val r = (stepX * 0.22f).coerceAtMost(3.5.dp.toPx())
+        val rowsN = ((size.height / (r * 3f)).toInt()).coerceIn(3, 9)
+        val stepY = size.height / rowsN
+        val start = cols - v.size
+        for (c in 0 until cols) {
+            val x = c * stepX + stepX / 2
+            val filled = if (c >= start) ((v[c - start] / mx) * rowsN).toInt().coerceIn(1, rowsN) else 0
+            for (k in 0 until rowsN) {
+                val y = size.height - k * stepY - stepY / 2
+                val on = k < filled
+                val col = androidx.compose.ui.graphics.lerp(colors[0], colors[1], k / (rowsN - 1f))
+                drawCircle(if (on) col else Color.White.copy(alpha = 0.07f), r, Offset(x, y))
+            }
+        }
+    }
+}
+
+/** Κάψουλα προόδου με διαβάθμιση και φωτεινή άκρη */
+@Composable
+fun Capsule(f: Float, colors: List<Color>, modifier: Modifier) {
+    Canvas(modifier) {
+        val cr = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
+        drawRoundRect(Color.White.copy(alpha = 0.08f), cornerRadius = cr)
+        val w = (size.width * f.coerceIn(0f, 1f)).coerceAtLeast(size.height)
+        drawRoundRect(colors[0].copy(alpha = 0.25f), topLeft = Offset(0f, -size.height * 0.25f), size = Size(w, size.height * 1.5f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height))
+        drawRoundRect(Brush.horizontalGradient(colors, endX = w), size = Size(w, size.height), cornerRadius = cr)
+        drawCircle(Color.White, size.height * 0.26f, Offset(w - size.height / 2, size.height / 2))
+    }
+}
+
+/** Τόξο (σαν το «ISS Flyover») με φωτεινό σημείο στην άκρη */
+@Composable
+fun ArcGauge(f: Float, colors: List<Color>, modifier: Modifier) {
+    Canvas(modifier) {
+        val sw = 9.dp.toPx()
+        val d = minOf(size.width, size.height * 2f) - sw
+        val tl = Offset((size.width - d) / 2, size.height - d / 2 - sw / 2)
+        val arc = Size(d, d)
+        drawArc(Color.White.copy(alpha = 0.08f), 180f, 180f, false, tl, arc, style = Stroke(sw, cap = StrokeCap.Round))
+        val sweep = 180f * f.coerceIn(0f, 1f)
+        drawArc(Brush.horizontalGradient(colors, startX = tl.x, endX = tl.x + d), 180f, sweep, false, tl, arc, style = Stroke(sw, cap = StrokeCap.Round))
+        val a = Math.toRadians((180f + sweep).toDouble())
+        val c = Offset(tl.x + d / 2 + (d / 2) * kotlin.math.cos(a).toFloat(), tl.y + d / 2 + (d / 2) * kotlin.math.sin(a).toFloat())
+        drawCircle(colors[1].copy(alpha = 0.35f), sw * 1.1f, c)
+        drawCircle(Color.White, sw * 0.45f, c)
+    }
+}
+
+/** Χάρακας με γραμμές (σαν τον χρονομετρητή espresso) */
+@Composable
+fun TickRuler(f: Float, colors: List<Color>, modifier: Modifier) {
+    Canvas(modifier) {
+        val n = 30
+        val step = size.width / n
+        val sw = (step * 0.42f).coerceAtMost(4.dp.toPx())
+        val active = (f * n).toInt().coerceIn(0, n - 1)
+        for (i in 0 until n) {
+            val x = i * step + step / 2
+            val on = i <= active
+            val h = when { i == active -> size.height; i % 5 == 0 -> size.height * 0.72f; else -> size.height * 0.5f }
+            val col = if (on) androidx.compose.ui.graphics.lerp(colors[0], colors[1], i / (n - 1f)) else Color.White.copy(alpha = 0.12f)
+            drawLine(col, Offset(x, size.height - h), Offset(x, size.height), strokeWidth = sw, cap = StrokeCap.Round)
+        }
+    }
+}
+
+/** Μπαταρία-κάψουλα με «μύτη» */
+@Composable
+fun BatteryShape(f: Float, colors: List<Color>, modifier: Modifier) {
+    Canvas(modifier) {
+        val nub = size.height * 0.18f
+        val body = Size(size.width - nub * 1.6f, size.height)
+        val cr = androidx.compose.ui.geometry.CornerRadius(size.height * 0.38f)
+        drawRoundRect(Color.White.copy(alpha = 0.22f), size = body, cornerRadius = cr, style = Stroke(1.5.dp.toPx()))
+        drawRoundRect(Color.White.copy(alpha = 0.22f), topLeft = Offset(body.width + nub * 0.4f, size.height * 0.32f), size = Size(nub, size.height * 0.36f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(nub / 2))
+        val pad = 3.dp.toPx()
+        val w = ((body.width - pad * 2) * f.coerceIn(0f, 1f)).coerceAtLeast(size.height * 0.3f)
+        drawRoundRect(
+            Brush.horizontalGradient(colors, startX = pad, endX = pad + w), topLeft = Offset(pad, pad),
+            size = Size(w, size.height - pad * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius((size.height - pad * 2) * 0.36f)
+        )
     }
 }
