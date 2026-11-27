@@ -970,20 +970,22 @@ private fun MenuTile(label: String, icon: ImageVector, color: Color, modifier: M
     val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val sc by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.95f else 1f, Motion.snappy(Motion.icon), label = "tile")
-    val shape = RoundedCornerShape(16.dp)
+    // σαν τις κάρτες του ταμπλό: κατάμαυρο, χωρίς χρωματιστό περίγραμμα, μόνο το εικονίδιο σε χρώμα
+    val shape = RoundedCornerShape(20.dp)
     Column(
         modifier
-            .height(62.dp)
+            .height(64.dp)
             .graphicsLayer { scaleX = sc; scaleY = sc }
+            .shadow(8.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
             .clip(shape)
-            .background(color.copy(alpha = if (pressed) 0.22f else 0.1f))
-            .border(0.8.dp, color.copy(alpha = 0.55f), shape)
+            .background(if (pressed) Color(0xFF16161B) else Color.Black)
+            .border(0.6.dp, Color.White.copy(alpha = 0.06f), shape)
             .clickable(interactionSource = src, indication = null, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.height(5.dp))
+        Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(6.dp))
         Text(label, color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
     }

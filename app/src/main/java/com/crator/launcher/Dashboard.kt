@@ -793,9 +793,10 @@ fun Dashboard(
                 Box(
                     Modifier.offset { r.topLeft }
                         .size(with(d2) { r.width.toDp() }, with(d2) { r.height.toDp() })
+                        .shadow(10.dp, RoundedCornerShape(50), ambientColor = Color.Black, spotColor = Color.Black)
                         .clip(RoundedCornerShape(50))
-                        .background(Brush.verticalGradient(listOf(Color(0xFF1F1F24), Color(0xFF141418))))
-                        .border(0.6.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(50))
+                        .background(Color.Black)
+                        .border(0.6.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(50))
                 )
             }
             if (rows.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
