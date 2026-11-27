@@ -261,7 +261,7 @@ private fun HomeSection(p: Prefs) {
     Group("Πλέγμα")
     SliderPref("Στήλες", p.cols, 3..7) { p.cols = it }
     SliderPref("Γραμμές", p.rows, 3..9) { p.rows = it }
-    ChoicePref("Ενδιάμεσες γραμμές", listOf(1, 2, 3), p.fine, { when (it) { 1 -> "Όχι"; 2 -> "Μισά"; else -> "Τρίτα" } }) { p.setFineGrid(it) }
+    ChoicePref("Ενδιάμεσες γραμμές", listOf(1, 2, 3, 4), p.fine, { when (it) { 1 -> "Όχι"; 2 -> "Μισά"; 3 -> "Τρίτα"; else -> "Τέταρτα" } }) { p.setFineGrid(it) }
     SliderPref("Σελίδες αρχικής", p.homePages, 1..8) { p.homePages = it }
     SwitchPref("Δείκτης σελίδων", p.pageIndicator) { p.pageIndicator = it }
     Group("Ρολόι")

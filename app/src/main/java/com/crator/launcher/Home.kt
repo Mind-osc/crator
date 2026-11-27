@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -738,10 +739,14 @@ private fun HomePage(
             val ch = maxHeight / prefs.gridRows
             // Το εικονίδιο μικραίνει ώστε να χωράει πάντα και η ετικέτα στο κελί
             val labelH = if (prefs.showLabels) with(LocalDensity.current) { (prefs.labelSize * 1.4f * prefs.labelLines).sp.toDp() } + 5.dp else 0.dp
-            val needH = minOf(prefs.iconSize.dp, cw - 10.dp) + labelH + 12.dp
-            val span = if (prefs.fine <= 1) 1 else kotlin.math.ceil(needH / ch).toInt().coerceIn(1, prefs.fine)
+            // το εικονίδιο πιάνει μόνο όσο είναι (+λίγο αέρα), όχι στρογγυλεμένο προς τα πάνω,
+            // ώστε να μπαίνει κλιμακωτά και σφιχτά πάνω από άλλη σειρά
+            val baseIcon = minOf(prefs.iconSize.dp, cw - 10.dp)
+            val needH = baseIcon + labelH + 6.dp
+            val span = if (prefs.fine <= 1) 1 else kotlin.math.round(needH / ch).toInt().coerceIn(1, prefs.fine)
             androidx.compose.runtime.SideEffect { if (prefs.appSpanY != span) prefs.appSpanY = span }
-            val fitIcon = minOf(prefs.iconSize.dp, ch * span - labelH - 10.dp, cw - 10.dp).coerceAtLeast(24.dp)
+            val fitIcon = if (prefs.fine > 1 && !prefs.showLabels) baseIcon.coerceAtLeast(24.dp)
+                else minOf(prefs.iconSize.dp, ch * span - labelH - (if (prefs.fine > 1) 4.dp else 10.dp), cw - 10.dp).coerceAtLeast(24.dp)
             // ενδιάμεσες γραμμές: τελείες-οδηγοί όσο σέρνεις
             if (prefs.fine > 1 && drag.active && drag.moved && drag.currentPage == index) {
                 androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
@@ -780,6 +785,7 @@ private fun HomePage(
                         )
                     }
                     val pop = drag.recent == item
+                    Box(if (Item.isSized(item)) Modifier.fillMaxSize() else Modifier.wrapContentSize(Alignment.Center, unbounded = true), contentAlignment = Alignment.Center) {
                     when {
                         Item.isWidget(item) -> SystemWidget(Item.widgetId(item), widgets, prefs, { onItemLong(cell, item) })
                         Item.isCrator(item) -> CratorWidget(item, prefs, onClaude, onSettings, { onItemLong(cell, item) })
@@ -793,6 +799,7 @@ private fun HomePage(
                                     Modifier.graphicsLayer { val s = 1f - 0.12f * hoverS; scaleX = s; scaleY = s })
                             }
                         }
+                    }
                     }
                 }
                 }
