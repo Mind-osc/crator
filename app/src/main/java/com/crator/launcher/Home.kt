@@ -213,7 +213,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     fun drawerRelease(velPxY: Float, closing: Boolean = false) {
         // ανοίγει/κλείνει με απόσταση Ή ταχύτητα, και η κίνηση ξεκινά με την ταχύτητα του δαχτύλου.
         // στο κλείσιμο (από ανοιχτό) αρκεί μικρή κίνηση: ~15% της διαδρομής ή ελαφρύ τίναγμα
-        val open = if (closing) when { velPxY > 220f -> false; velPxY < -350f -> true; else -> drawerP.value > 0.85f }
+        val open = if (closing) when { velPxY > 140f -> false; velPxY < -350f -> true; else -> drawerP.value > 0.88f }
         else when { velPxY < -350f -> true; velPxY > 350f -> false; else -> drawerP.value > 0.3f }
         drawerDragging = false
         drawerReleasing = true
@@ -614,7 +614,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 onFolderLong = { id -> popupAnchor = drag.lastPointer; folderSheet = id },
                 onClose = { overlay = Overlay.None },
                 drag = drag,
-                onPull = { px -> drawerTrack(1f - px / travel()) },
+                onPull = { px -> drawerTrack(1f - px / (travel() * 0.5f)) }, // κλείσιμο με μισή κίνηση
                 onPullEnd = { v -> drawerRelease(v, closing = true) }
             )
         }
