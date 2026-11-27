@@ -148,7 +148,10 @@ class Prefs(private val context: Context) {
 
     // ---------- Συρτάρι ----------
     var drawerStyle by enm("drawer_style", DrawerStyle.Grid)
-    var drawerCols by int("drawer_cols", 4)
+    var drawerCols by int("drawer_cols", 5)
+    var drawerWidth by int("drawer_width", 92)
+    var drawerHeight by int("drawer_height", 74)
+    var drawerIconSize by int("drawer_icon", 48)
     var drawerColor by int("drawer_color", 0xFF0B0C14.toInt())
     var drawerOpacity by int("drawer_opacity", 82)
     var drawerKeyboard by bool("drawer_kb", false)

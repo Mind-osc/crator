@@ -238,7 +238,7 @@ fun BottomCard(onClose: () -> Unit, content: @Composable () -> Unit) {
             Modifier.navigationBarsPadding().padding(10.dp).fillMaxWidth()
                 .sheetMotion()
                 .shadow(36.dp, RoundedCornerShape(34.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                .smokedGlass(RoundedCornerShape(34.dp), alpha = 0.7f)
+                .smokedGlass(RoundedCornerShape(34.dp), alpha = 0.9f, tint = Color(0xFF09090C))
                 .pointerInput(Unit) { detectTapGestures { } }
                 .padding(20.dp)
         ) { content() }

@@ -5,6 +5,9 @@ package com.crator.launcher
 import android.graphics.Rect
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -188,9 +191,18 @@ fun AppDrawer(
         gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset == 0
     else listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
 
+    // Συμπαγές πάνελ κάτω (φτάνεται με το ένα χέρι)· πάτημα έξω = κλείσιμο
+    Box(
+        Modifier.fillMaxSize().statusBarsPadding().imePadding()
+            .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { close() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
     Column(
         Modifier
-            .fillMaxSize()
+            .navigationBarsPadding()
+            .padding(bottom = 10.dp)
+            .fillMaxWidth(prefs.drawerWidth / 100f)
+            .fillMaxHeight(prefs.drawerHeight / 100f)
             .graphicsLayer {
                 translationY = pull.value
                 alpha = 1f - (pull.value / size.height.coerceAtLeast(1f)).coerceIn(0f, 1f) * 0.6f
@@ -234,11 +246,12 @@ fun AppDrawer(
                     }
                 }
             }
+            .shadow(30.dp, RoundedCornerShape(32.dp), ambientColor = Color.Black, spotColor = Color.Black)
+            .clip(RoundedCornerShape(32.dp))
             .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.05f), Color.Transparent)))
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
+            .border(0.6.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(32.dp))
+            .pointerInput(Unit) { androidx.compose.foundation.gestures.detectTapGestures { } }
     ) {
         Box(
             Modifier.fillMaxWidth().height(26.dp).pointerInput(Unit) {
@@ -256,8 +269,8 @@ fun AppDrawer(
                 columns = GridCells.Fixed(prefs.drawerCols),
                 state = gridState,
                 modifier = Modifier.weight(1f).nestedScroll(conn),
-                contentPadding = PaddingValues(10.dp, 4.dp, 10.dp, 24.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                contentPadding = PaddingValues(6.dp, 4.dp, 6.dp, 16.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 itemsIndexed(list, key = { _, it -> it.key }) { i, e ->
                     val hover by androidx.compose.animation.core.animateFloatAsState(if (hoverKey == e.key) 1f else 0f, Motion.lively(Motion.drag), label = "dh")
@@ -270,15 +283,15 @@ fun AppDrawer(
                     ) {
                         Box(contentAlignment = Alignment.TopCenter) {
                             if (hover > 0.01f) Box(
-                                Modifier.padding(top = 2.dp).size(prefs.iconSize.dp * 1.4f)
+                                Modifier.padding(top = 2.dp).size(prefs.drawerIconSize.dp * 1.4f)
                                     .graphicsLayer { val sc = 0.6f + 0.4f * hover; scaleX = sc; scaleY = sc; alpha = hover; translationY = -prefs.iconSize.dp.toPx() * 0.12f }
                                     .smokedGlass(shapeFor(if (prefs.iconShape == IconShape.Original) IconShape.Circle else prefs.iconShape, prefs.iconCorner), alpha = 0.45f)
                             )
                             val pop = drag?.recent == e.key
                             Box(Modifier.graphicsLayer { val sc = 1f - 0.12f * hover; scaleX = sc; scaleY = sc }) {
                                 when (e) {
-                                    is DrawerEntry.A -> AppCell(e.app, prefs, prefs.iconSize.dp, true, { onLaunch(e.app, it) }, { onLong(e.app) }, labelColor = labelColor)
-                                    is DrawerEntry.F -> FolderCell(e.folder, byKey, prefs, prefs.iconSize.dp, true, { b -> onFolder(e.id, b) }, { onFolderLong(e.id) }, pop = pop)
+                                    is DrawerEntry.A -> AppCell(e.app, prefs, prefs.drawerIconSize.dp, true, { onLaunch(e.app, it) }, { onLong(e.app) }, labelColor = labelColor)
+                                    is DrawerEntry.F -> FolderCell(e.folder, byKey, prefs, prefs.drawerIconSize.dp, true, { b -> onFolder(e.id, b) }, { onFolderLong(e.id) }, pop = pop)
                                 }
                             }
                         }
@@ -315,5 +328,6 @@ fun AppDrawer(
         }
 
         if (prefs.drawerSearchBottom) search()
+    }
     }
 }

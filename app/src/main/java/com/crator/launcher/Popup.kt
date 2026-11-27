@@ -119,7 +119,7 @@ fun AnchoredPopup(
                     Modifier
                         .popupMotion(origin)
                         .shadow(30.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                        .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.74f)
+                        .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.9f, tint = Color(0xFF09090C))
                         .pointerInput(Unit) { detectTapGestures { } }
                 ) { content() }
             }

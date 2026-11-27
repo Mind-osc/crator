@@ -409,7 +409,10 @@ private fun FoldersSection(p: Prefs) {
 private fun DrawerSection(p: Prefs, repo: AppRepository) {
     Group("Εμφάνιση")
     ChoicePref("Στυλ", DrawerStyle.entries, p.drawerStyle, { it.label }) { p.drawerStyle = it }
-    SliderPref("Στήλες", p.drawerCols, 3..6) { p.drawerCols = it }
+    SliderPref("Στήλες", p.drawerCols, 3..7) { p.drawerCols = it }
+    SliderPref("Μέγεθος εικονιδίων", p.drawerIconSize, 32..64, "dp") { p.drawerIconSize = it }
+    SliderPref("Πλάτος πάνελ", p.drawerWidth, 60..100, "%") { p.drawerWidth = it }
+    SliderPref("Ύψος πάνελ", p.drawerHeight, 40..100, "%") { p.drawerHeight = it }
     ColorPref("Χρώμα φόντου", p.drawerColor) { p.drawerColor = it }
     SliderPref("Αδιαφάνεια", p.drawerOpacity, 0..100, "%") { p.drawerOpacity = it }
     ColorPref("Χρώμα ετικετών", p.drawerLabelColor) { p.drawerLabelColor = it }

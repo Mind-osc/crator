@@ -598,13 +598,13 @@ fun Dashboard(
             // Meter Remaining: λεπτός δακτύλιος, ετικέτα, μεγάλη τιμή δεξιά + μπάρες ιστορικού σαν το τρέξιμο
             "battery" -> LiveCard(mod.clickable(enabled = !editMode) { Actions.settings(ctx, Intent.ACTION_POWER_USAGE_SUMMARY) }) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    RingMeter(stats.batLevel / 100f, Live.battery[0], Modifier.size(30.dp))
+                    RingMeter(stats.batLevel / 100f, Live.battery[0], Modifier.size(24.dp))
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Title("Μπαταρία")
                         Meta(stats.batStatus)
                     }
-                    Text("${stats.batLevel}%", color = Smoke.pearl, fontSize = 24.sp, fontWeight = FontWeight.Medium, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
+                    Text("${stats.batLevel}%", color = Smoke.pearl, fontSize = 18.sp, fontWeight = FontWeight.Medium, style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"))
                 }
                 RunBars(stats.batHist, Live.battery[0], Modifier.weight(1f).fillMaxWidth().padding(vertical = 8.dp))
                 Meta("%.1f °C, ${stats.batCurrent} mA".format(stats.batTemp))
@@ -617,7 +617,7 @@ fun Dashboard(
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     Text("Θερμικά", color = Live.thermal[0], fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
-                    Text(stats.thermal, color = Live.thermal[0], fontSize = 22.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                    Text(stats.thermal, color = Live.thermal[0], fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
             }
         }
@@ -694,16 +694,20 @@ fun Dashboard(
         // Θέσεις (σε px μέσα στο πλέγμα): γραμμή καρτών = 1 μερίδα, γραμμή κουμπιών = 0,62
         val gapPx = with(LocalDensity.current) { 8.dp.roundToPx() }
         val capsules = mutableListOf<androidx.compose.ui.unit.IntRect>()
+        val cardRowPx = with(LocalDensity.current) { 100.dp.roundToPx() }
+        val btnRowPx = with(LocalDensity.current) { 70.dp.roundToPx() }
         val rects: Map<String, androidx.compose.ui.unit.IntRect> = run {
             val m = LinkedHashMap<String, androidx.compose.ui.unit.IntRect>()
             val w = gridSize.width; val h = gridSize.height
             if (w > 0 && h > 0 && rows.isNotEmpty()) {
-                val weights = rows.map { if (isButton(it[0])) 0.62f else 1f }
-                val avail = (h - gapPx * (rows.size - 1)).coerceAtLeast(0)
-                val sum = weights.sum()
-                var y = 0
+                // σταθερά ύψη (κάρτα ~100dp, κουμπιά ~70dp)· αν δεν χωράνε, μικραίνουν αναλογικά
+                val want = rows.map { if (isButton(it[0])) btnRowPx else cardRowPx }
+                val total = want.sum() + gapPx * (rows.size - 1)
+                val k = if (total > h) (h - gapPx * (rows.size - 1)).toFloat() / want.sum() else 1f
+                val used = (want.sum() * k).toInt() + gapPx * (rows.size - 1)
+                var y = (h - used).coerceAtLeast(0)
                 rows.forEachIndexed { r, row ->
-                    val rh = (avail * weights[r] / sum).toInt()
+                    val rh = (want[r] * k).toInt()
                     val cols = if (isButton(row[0])) 4 else 2
                     if (isButton(row[0])) capsules += androidx.compose.ui.unit.IntRect(0, y, w, y + rh)
                     val cw = (w - gapPx * (cols - 1)) / cols
@@ -851,7 +855,7 @@ fun Dashboard(
         Column(
             Modifier.width(290.dp).heightIn(max = 520.dp)
                 .shadow(30.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.82f)
+                .smokedGlass(RoundedCornerShape(26.dp), alpha = 0.92f, tint = Color(0xFF09090C))
                 .padding(10.dp)
         ) {
             if (appPick) {
@@ -1052,7 +1056,7 @@ private fun LiveCard(modifier: Modifier = Modifier, content: @Composable android
             .clip(shape)
             .background(Color.Black)
             .border(0.6.dp, Color.White.copy(alpha = 0.06f), shape)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 9.dp),
         content = content
     )
 }
@@ -1067,9 +1071,9 @@ private fun Meta(t: String) = Text(t, color = Color(0xFF8E8E96), fontSize = 11.s
 @Composable
 private fun Num(value: String, unit: String, color: Color) {
     Row(verticalAlignment = Alignment.Bottom) {
-        Text(value, color = color, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp,
+        Text(value, color = color, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp,
             style = androidx.compose.ui.text.TextStyle(fontFeatureSettings = "tnum"), maxLines = 1)
-        Text(unit, color = color, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 4.dp, start = 1.dp), maxLines = 1)
+        Text(unit, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 3.dp, start = 1.dp), maxLines = 1)
     }
 }
 
@@ -1174,10 +1178,10 @@ private fun Segments(fracs: List<Float>, colors: List<List<Color>>, labels: List
             Column(Modifier.weight(f.coerceAtLeast(0.18f))) {
                 Text(labels[i], color = Color(0xFF9C9CA6), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 Box(
-                    Modifier.padding(vertical = 4.dp).fillMaxWidth().height(26.dp).clip(RoundedCornerShape(50))
+                    Modifier.padding(vertical = 3.dp).fillMaxWidth().height(14.dp).clip(RoundedCornerShape(50))
                         .background(Brush.horizontalGradient(colors[i]))
                 ) {
-                    if (i == 0) Box(Modifier.align(Alignment.CenterStart).padding(start = 5.dp).size(16.dp).clip(CircleShape).background(Color.White))
+                    if (i == 0) Box(Modifier.align(Alignment.CenterStart).padding(start = 3.dp).size(8.dp).clip(CircleShape).background(Color.White))
                 }
                 Text(values[i], color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }

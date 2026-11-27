@@ -172,7 +172,7 @@ class DragState {
         val r = fy.toInt().coerceIn(0, g.rows - 1)
         val lx = fx - c; val ly = fy - r
         // μόνο το «καρδιά» του εικονιδίου = φάκελος, όλο το υπόλοιπο = παραμερισμός (σαν το ταμπλό)
-        val center = lx in 0.34f..0.66f && ly in 0.2f..0.6f
+        val center = lx in 0.2f..0.8f && ly in 0.06f..0.72f
         return DropTarget.Cell(currentPage, r * g.cols + c, center)
     }
 }
@@ -260,7 +260,7 @@ fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
 
     Box(Modifier.fillMaxSize()) {
         // Επισήμανση θέσης (απαλό γυάλινο «κελί»)
-        if (target is DropTarget.Cell && drag.moved && !(target.center && Item.isApp(item) && drag.grids[target.page] != null && drag.reflow == null && hoverOccupied(drag, prefs, target))) {
+        if (target is DropTarget.Cell && drag.moved && Item.isSized(item) && !(target.center && Item.isApp(item) && drag.grids[target.page] != null && drag.reflow == null && hoverOccupied(drag, prefs, target))) {
             drag.grids[target.page]?.let { g ->
                 val (sx0, sy0) = Item.span(item)
                 val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)

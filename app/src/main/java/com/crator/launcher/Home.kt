@@ -202,7 +202,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     var drawerDragging by remember { mutableStateOf(false) }
     var drawerReleasing by remember { mutableStateOf(false) }
     // απόσταση που διανύει το δάχτυλο για 0→1: το συρτάρι κινείται ακριβώς όσο το δάχτυλο (1:1)
-    fun travel() = (rootSize.height * 0.42f).coerceAtLeast(1f)
+    fun travel() = (rootSize.height * 0.22f).coerceAtLeast(1f)
     fun drawerTrack(raw: Float) {
         // λάστιχο: πέρα από το πλήρες άνοιγμα κινείται μόνο το 1/5 της απόστασης
         val p = if (raw > 1f) 1f + (raw - 1f) * 0.2f else raw
@@ -211,7 +211,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     }
     fun drawerRelease(velPxY: Float) {
         // ανοίγει/κλείνει με απόσταση Ή ταχύτητα, και η κίνηση ξεκινά με την ταχύτητα του δαχτύλου
-        val open = when { velPxY < -700f -> true; velPxY > 700f -> false; else -> drawerP.value > 0.45f }
+        val open = when { velPxY < -350f -> true; velPxY > 350f -> false; else -> drawerP.value > 0.3f }
         drawerDragging = false
         drawerReleasing = true
         overlay = if (open) Overlay.Drawer else if (overlay == Overlay.Drawer) Overlay.None else overlay
@@ -348,7 +348,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 val occ = prefs.occupied(target.page, exclude)
                 val hit = occ[target.cell]
                 val hitItem = hit?.let { prefs.pages.getOrNull(target.page)?.get(it) }
-                val folderDrop = target.center && pendingReflow == null
+                val folderDrop = target.center
                 val canShift = !Item.isSized(item) && hit != null && !folderDrop
                 when {
                     canShift -> {
@@ -389,13 +389,13 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             val it = drag.item
             val t = if (drag.moved) drag.target() as? DropTarget.Cell else null
             if (it == null || t == null || Item.isSized(it)) null
-            else if (t.center && drag.reflow?.let { r -> r.page == t.page } != true) null
+            else if (t.center) null
             else t.page to t.cell
         }.distinctUntilChanged().collectLatest { key ->
-            if (key == null) { delay(260); drag.reflow = null; return@collectLatest }
+            if (key == null) { delay(120); drag.reflow = null; return@collectLatest }
             val (page, cell) = key
             if (drag.reflow?.let { it.page == page && it.insertAt == cell } == true) return@collectLatest
-            delay(70)
+            delay(320)
             val ex = (drag.source as? DragSource.Home)?.takeIf { it.page == page }?.cell
             val moves = prefs.reflowMoves(page, cell, ex)
             drag.reflow = if (moves.isNullOrEmpty()) null else DragState.Reflow(page, cell, moves)
