@@ -351,7 +351,9 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 val occ = prefs.occupied(target.page, exclude)
                 val hit = occ[target.cell]
                 val hitItem = hit?.let { prefs.pages.getOrNull(target.page)?.get(it) }
-                val folderDrop = target.center
+                // φάκελος μόνο όταν αφήνεις πάνω σε άλλο εικονίδιο/φάκελο — αλλιώς ποτέ «Δεν χωράει» σε κενό
+                val folderDrop = target.center && Item.isApp(item) && hitItem != null && hitItem != item &&
+                    (Item.isApp(hitItem) || Item.isFolder(hitItem))
                 val canShift = !Item.isSized(item) && hit != null && !folderDrop && prefs.fine <= 1
                 // με ενδιάμεσες γραμμές: αν δεν χωράει ακριβώς, κουμπώνει στην πιο κοντινή ελεύθερη θέση
                 val near = if (prefs.fine > 1 && !folderDrop && !prefs.fits(target.page, anchor, sx, sy, exclude))
@@ -396,8 +398,12 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     drag.onDrop = ::handleDrop
     drag.spanOf = { prefs.spanOf(it) }
     drag.snapOf = snap@{ t, it ->
-        if (prefs.fine <= 1 || t.center) return@snap null
+        if (prefs.fine <= 1) return@snap null
         val (sx, sy) = prefs.spanOf(it)
+        val ex0 = (drag.source as? DragSource.Home)?.takeIf { s -> s.page == t.page }?.cell
+        val hitA = prefs.occupied(t.page, ex0)[t.cell]
+        val hitI = hitA?.let { a -> prefs.pages.getOrNull(t.page)?.get(a) }
+        if (t.center && Item.isApp(it) && hitI != null && (Item.isApp(hitI) || Item.isFolder(hitI))) return@snap null
         val r = (t.cell / prefs.cols).coerceAtMost(prefs.gridRows - sy).coerceAtLeast(0)
         val c = (t.cell % prefs.cols).coerceAtMost(prefs.cols - sx).coerceAtLeast(0)
         val ex = (drag.source as? DragSource.Home)?.takeIf { s -> s.page == t.page }?.cell
@@ -726,7 +732,7 @@ private fun HomePage(
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp)
-                .onGloballyPositioned { drag.grids[index] = GridGeom(it.boundsInWindow(), prefs.cols, prefs.gridRows) }
+                .onGloballyPositioned { drag.grids[index] = GridGeom(it.boundsInWindow(), prefs.cols, prefs.gridRows, prefs.fine) }
         ) {
             val cw = maxWidth / prefs.cols
             val ch = maxHeight / prefs.gridRows

@@ -68,7 +68,7 @@ sealed interface DropTarget {
     data class DrawerItem(val key: String) : DropTarget
 }
 
-class GridGeom(val rect: Rect, val cols: Int, val rows: Int)
+class GridGeom(val rect: Rect, val cols: Int, val rows: Int, val fine: Int = 1)
 
 class DragState {
     var item by mutableStateOf<String?>(null)
@@ -177,7 +177,9 @@ class DragState {
         val r = fy.toInt().coerceIn(0, g.rows - 1)
         val lx = fx - c; val ly = fy - r
         // μόνο το «καρδιά» του εικονιδίου = φάκελος, όλο το υπόλοιπο = παραμερισμός (σαν το ταμπλό)
-        val center = lx in 0.2f..0.8f && ly in 0.06f..0.72f
+        // με ενδιάμεσες γραμμές τα κελιά είναι πολύ κοντά: μετράει μόνο η οριζόντια «καρδιά»,
+        // και το αν από κάτω υπάρχει εικονίδιο το κρίνει η αρχική οθόνη
+        val center = if (g.fine > 1) lx in 0.25f..0.75f else lx in 0.2f..0.8f && ly in 0.06f..0.72f
         return DropTarget.Cell(currentPage, r * g.cols + c, center)
     }
 }
