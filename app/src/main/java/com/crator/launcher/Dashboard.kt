@@ -637,7 +637,8 @@ fun Dashboard(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Μόνο τα κουμπιά επεξεργασίας πάνω δεξιά (χωρίς τίτλο)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        // σταθερό ύψος: όταν εμφανίζονται τα κουμπιά, ο πίνακας ΔΕΝ μετακινείται (αλλιώς το σηκωμένο κομμάτι «πηδάει»)
+        Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.animation.AnimatedVisibility(
                 editMode,
                 enter = androidx.compose.animation.scaleIn(Motion.pop(Motion.sheet)) + androidx.compose.animation.fadeIn(),
