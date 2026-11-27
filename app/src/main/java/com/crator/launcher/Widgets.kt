@@ -214,11 +214,11 @@ class WidgetController(private val activity: Activity, private val prefs: Prefs)
 
     fun defaultSpan(info: AppWidgetProviderInfo): Pair<Int, Int> {
         if (info.targetCellWidth > 0 && info.targetCellHeight > 0)
-            return info.targetCellWidth.coerceIn(1, prefs.cols) to info.targetCellHeight.coerceIn(1, prefs.rows)
+            return info.targetCellWidth.coerceIn(1, prefs.cols) to (info.targetCellHeight * prefs.fine).coerceIn(1, prefs.gridRows)
         val dm = activity.resources.displayMetrics
         val cw = dm.widthPixels / prefs.cols.toFloat()
-        val ch = dm.heightPixels * 0.68f / prefs.rows
-        return ceil(info.minWidth / cw).toInt().coerceIn(1, prefs.cols) to ceil(info.minHeight / ch).toInt().coerceIn(1, prefs.rows)
+        val ch = dm.heightPixels * 0.68f / prefs.gridRows
+        return ceil(info.minWidth / cw).toInt().coerceIn(1, prefs.cols) to ceil(info.minHeight / ch).toInt().coerceIn(1, prefs.gridRows)
     }
 
     fun startListening() { runCatching { host.startListening() } }

@@ -91,6 +91,10 @@ class Prefs(private val context: Context) {
     // ---------- Αρχική ----------
     var cols by int("cols", 4)
     var rows by int("rows", 5)
+    /** Ενδιάμεσες γραμμές: 1 = κανονικό πλέγμα, 2 = μισά, 3 = τρίτα */
+    var fine by int("fine", 1)
+    /** Πόσες λεπτές γραμμές πιάνει ένα εικονίδιο (υπολογίζεται από το μέγεθος της οθόνης) */
+    var appSpanY by androidx.compose.runtime.mutableIntStateOf(1)
     var homePages by int("home_pages", 2)
     var clockStyle by enm("clock_style", ClockStyle.Big)
     var pageIndicator by bool("page_indicator", true)

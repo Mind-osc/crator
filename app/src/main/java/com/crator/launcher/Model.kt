@@ -33,17 +33,46 @@ object Item {
     }
 }
 
+val Prefs.gridRows: Int get() = rows * fine.coerceIn(1, 4)
+
+/** Μέγεθος στοιχείου σε κελιά του (λεπτού) πλέγματος */
+fun Prefs.spanOf(item: String): Pair<Int, Int> =
+    if (Item.isSized(item)) Item.span(item) else 1 to appSpanY.coerceIn(1, fine.coerceIn(1, 4))
+
+/** Αλλαγή ενδιάμεσων γραμμών: οι θέσεις και τα ύψη των widgets μετατρέπονται */
+fun Prefs.setFineGrid(newF: Int) {
+    val oldF = fine.coerceIn(1, 4)
+    val nf = newF.coerceIn(1, 4)
+    if (nf == oldF) return
+    pages = pages.map { m ->
+        val out = LinkedHashMap<Int, String>()
+        m.forEach { (cell, item) ->
+            val r = cell / cols; val c = cell % cols
+            val nr = r * nf / oldF
+            val it2 = if (Item.isSized(item)) {
+                val (sx, sy) = Item.span(item)
+                Item.resized(item, sx, (sy * nf / oldF).coerceAtLeast(1))
+            } else item
+            val key = nr * cols + c
+            if (key !in out) out[key] = it2
+        }
+        out
+    }
+    fine = nf
+    appSpanY = nf
+}
+
 /** κελί που καλύπτεται → κελί-άγκυρα του στοιχείου */
 fun Prefs.occupied(page: Int, exclude: Int? = null): Map<Int, Int> {
     val out = HashMap<Int, Int>()
     val m = pages.getOrNull(page) ?: return out
     for ((anchor, item) in m) {
         if (anchor == exclude) continue
-        val (sx, sy) = Item.span(item)
+        val (sx, sy) = spanOf(item)
         val r = anchor / cols; val c = anchor % cols
         for (dy in 0 until sy) for (dx in 0 until sx) {
             val rr = r + dy; val cc = c + dx
-            if (rr < rows && cc < cols) out[rr * cols + cc] = anchor
+            if (rr < gridRows && cc < cols) out[rr * cols + cc] = anchor
         }
     }
     return out
@@ -51,14 +80,14 @@ fun Prefs.occupied(page: Int, exclude: Int? = null): Map<Int, Int> {
 
 fun Prefs.fits(page: Int, anchor: Int, sx: Int, sy: Int, exclude: Int? = null): Boolean {
     val r = anchor / cols; val c = anchor % cols
-    if (anchor < 0 || c + sx > cols || r + sy > rows) return false
+    if (anchor < 0 || c + sx > cols || r + sy > gridRows) return false
     val occ = occupied(page, exclude)
     for (dy in 0 until sy) for (dx in 0 until sx) if ((r + dy) * cols + (c + dx) in occ) return false
     return true
 }
 
 fun Prefs.findSpot(page: Int, sx: Int, sy: Int): Int? =
-    (0 until cols * rows).firstOrNull { fits(page, it, sx, sy) }
+    (0 until cols * gridRows).firstOrNull { fits(page, it, sx, sy) }
 
 fun Prefs.setHome(page: Int, cell: Int, item: String) {
     val ps = pages.map { it.toMutableMap() }.toMutableList()
@@ -81,13 +110,13 @@ fun Prefs.isInDock(key: String) = key in dock
 
 /** Βάζει ένα στοιχείο στην πρώτη ελεύθερη θέση· αν δεν χωράει, προσθέτει σελίδα */
 fun Prefs.placeOnHome(item: String, preferPage: Int = 0): Boolean {
-    val (sx, sy) = Item.span(item)
+    val (sx, sy) = spanOf(item)
     val n = homePages
     val start = preferPage.coerceIn(0, n - 1)
     for (p in (start until n) + (0 until start)) {
         findSpot(p, sx, sy)?.let { setHome(p, it, item); return true }
     }
-    if (homePages < 8 && sx <= cols && sy <= rows) {
+    if (homePages < 8 && sx <= cols && sy <= gridRows) {
         homePages = homePages + 1
         setHome(homePages - 1, 0, item)
         return true
@@ -163,7 +192,8 @@ fun Prefs.setPage(page: Int, map: Map<Int, String>) {
  * Τα widgets μένουν ακίνητα. Επιστρέφει παλιό κελί → νέο κελί, ή null αν δεν γίνεται.
  */
 fun Prefs.reflowMoves(page: Int, insertAt: Int, exclude: Int?): Map<Int, Int>? {
-    val n = cols * rows
+    if (fine > 1 && appSpanY > 1) return null // με ενδιάμεσες γραμμές τα εικονίδια μπαίνουν όπου υπάρχει χώρος
+    val n = cols * gridRows
     val m = pages.getOrNull(page) ?: return null
     val occ = occupied(page, exclude)
     val owner = occ[insertAt] ?: return null

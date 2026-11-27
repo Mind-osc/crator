@@ -21,6 +21,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -339,9 +340,9 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 drag.recent = item
             }
             is DropTarget.Cell -> {
-                val (sx, sy) = Item.span(item)
+                val (sx, sy) = prefs.spanOf(item)
                 var r = target.cell / prefs.cols; var c = target.cell % prefs.cols
-                c = c.coerceAtMost(prefs.cols - sx).coerceAtLeast(0); r = r.coerceAtMost(prefs.rows - sy).coerceAtLeast(0)
+                c = c.coerceAtMost(prefs.cols - sx).coerceAtLeast(0); r = r.coerceAtMost(prefs.gridRows - sy).coerceAtLeast(0)
                 val anchor = r * prefs.cols + c
                 val exclude = (src as? DragSource.Home)?.takeIf { it.page == target.page }?.cell
                 if (src is DragSource.Home && src.page == target.page && src.cell == anchor) return
@@ -382,6 +383,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
     }
     drag.onDrop = ::handleDrop
+    drag.spanOf = { prefs.spanOf(it) }
     // Παραμερισμός: όταν κρατάς λίγο στην άκρη ενός εικονιδίου, τα άλλα κάνουν χώρο
     LaunchedEffect(drag.active) {
         if (!drag.active) return@LaunchedEffect
@@ -705,21 +707,33 @@ private fun HomePage(
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp)
-                .onGloballyPositioned { drag.grids[index] = GridGeom(it.boundsInWindow(), prefs.cols, prefs.rows) }
+                .onGloballyPositioned { drag.grids[index] = GridGeom(it.boundsInWindow(), prefs.cols, prefs.gridRows) }
         ) {
             val cw = maxWidth / prefs.cols
-            val ch = maxHeight / prefs.rows
+            val ch = maxHeight / prefs.gridRows
             // Το εικονίδιο μικραίνει ώστε να χωράει πάντα και η ετικέτα στο κελί
             val labelH = if (prefs.showLabels) with(LocalDensity.current) { (prefs.labelSize * 1.4f * prefs.labelLines).sp.toDp() } + 5.dp else 0.dp
-            val fitIcon = minOf(prefs.iconSize.dp, ch - labelH - 10.dp, cw - 10.dp).coerceAtLeast(24.dp)
+            val needH = minOf(prefs.iconSize.dp, cw - 10.dp) + labelH + 12.dp
+            val span = if (prefs.fine <= 1) 1 else kotlin.math.ceil(needH / ch).toInt().coerceIn(1, prefs.fine)
+            androidx.compose.runtime.SideEffect { if (prefs.appSpanY != span) prefs.appSpanY = span }
+            val fitIcon = minOf(prefs.iconSize.dp, ch * span - labelH - 10.dp, cw - 10.dp).coerceAtLeast(24.dp)
+            // ενδιάμεσες γραμμές: τελείες-οδηγοί όσο σέρνεις
+            if (prefs.fine > 1 && drag.active && drag.moved && drag.currentPage == index) {
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val gw = size.width / prefs.cols; val gh = size.height / prefs.gridRows
+                    for (rr in 0..prefs.gridRows) for (cc in 0..prefs.cols) {
+                        drawCircle(Color.White.copy(alpha = if (rr % prefs.fine == 0) 0.35f else 0.18f), 1.5.dp.toPx(), androidx.compose.ui.geometry.Offset(cc * gw, rr * gh))
+                    }
+                }
+            }
             items.forEach { (cell, item) -> key(item) {
-                val (sx0, sy0) = Item.span(item)
-                val sx = sx0.coerceAtMost(prefs.cols); val sy = sy0.coerceAtMost(prefs.rows)
+                val (sx0, sy0) = prefs.spanOf(item)
+                val sx = sx0.coerceAtMost(prefs.cols); val sy = sy0.coerceAtMost(prefs.gridRows)
                 val shown = reflow[cell] ?: cell
                 val r = shown / prefs.cols; val c = shown % prefs.cols
                 val ox by animateDpAsState(cw * c, Motion.lively(Motion.drag), label = "ox")
                 val oy by animateDpAsState(ch * r, Motion.lively(Motion.drag), label = "oy")
-                if (r < prefs.rows) {
+                if (r < prefs.gridRows) {
                 val dragging = drag.hiddenSource == DragSource.Home(index, cell)
                 val hovered = hoverAnchor == cell
                 val hoverS by androidx.compose.animation.core.animateFloatAsState(if (hovered) 1f else 0f, Motion.lively(), label = "hover")
@@ -918,7 +932,7 @@ private fun AppSheet(
     if (picking) IconPicker(app, prefs, repo) { picking = false; onClose() }
 }
 
-/** Μενού παρατεταμένου πατήματος σε κενό σημείο (όπως στο Nova) */
+/** Μενού παρατεταμένου πατήματος σε κενό σημείο: σκούρο γυαλί, συμπαγές, πλακίδια με έντονα χρώματα */
 @Composable
 private fun HomeMenu(
     prefs: Prefs,
@@ -930,34 +944,46 @@ private fun HomeMenu(
     onClose: () -> Unit
 ) {
     BottomCard(onClose) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            MenuTile("Widgets", Icons.Rounded.Widgets, onWidgets)
-            MenuTile("Ταπετσαρία", Icons.Rounded.Wallpaper, onWallpaper)
-            MenuTile("Ρυθμίσεις", Icons.Rounded.Tune, onSettings)
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            MenuTile("Νέα σελίδα", Icons.Rounded.AddBox, onAddPage)
-            MenuTile("Διαγραφή σελίδας", Icons.Rounded.Remove, onRemovePage)
-            MenuTile(
-                if (prefs.lockLayout) "Ξεκλείδωμα" else "Κλείδωμα",
-                if (prefs.lockLayout) Icons.Rounded.LockOpen else Icons.Rounded.Lock
-            ) { prefs.lockLayout = !prefs.lockLayout; onClose() }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MenuTile("Widgets", Icons.Rounded.Widgets, Color(0xFFB37CFF), Modifier.weight(1f), onWidgets)
+                MenuTile("Ταπετσαρία", Icons.Rounded.Wallpaper, Color(0xFF34E0C6), Modifier.weight(1f), onWallpaper)
+                MenuTile("Ρυθμίσεις", Icons.Rounded.Tune, Color(0xFF4DA3FF), Modifier.weight(1f), onSettings)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MenuTile("Νέα σελίδα", Icons.Rounded.AddBox, Color(0xFFB9F35A), Modifier.weight(1f), onAddPage)
+                MenuTile("Διαγραφή σελίδας", Icons.Rounded.Remove, Color(0xFFFF5A6A), Modifier.weight(1f), onRemovePage)
+                MenuTile(
+                    if (prefs.lockLayout) "Ξεκλείδωμα" else "Κλείδωμα",
+                    if (prefs.lockLayout) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                    Color(0xFFFFC23D), Modifier.weight(1f)
+                ) { prefs.lockLayout = !prefs.lockLayout; onClose() }
+            }
         }
     }
 }
 
 @Composable
-private fun MenuTile(label: String, icon: ImageVector, onClick: () -> Unit) {
+private fun MenuTile(label: String, icon: ImageVector, color: Color, modifier: Modifier, onClick: () -> Unit) {
+    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val sc by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.95f else 1f, Motion.snappy(Motion.icon), label = "tile")
+    val shape = RoundedCornerShape(16.dp)
     Column(
-        Modifier.width(100.dp).clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        modifier
+            .height(62.dp)
+            .graphicsLayer { scaleX = sc; scaleY = sc }
+            .clip(shape)
+            .background(color.copy(alpha = if (pressed) 0.22f else 0.1f))
+            .border(0.8.dp, color.copy(alpha = 0.55f), shape)
+            .clickable(interactionSource = src, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Box(Modifier.size(56.dp).smokedGlass(CircleShape, alpha = 0.35f, tint = MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = Smoke.pearl)
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(label, color = Smoke.pearl, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.height(5.dp))
+        Text(label, color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
     }
 }
 

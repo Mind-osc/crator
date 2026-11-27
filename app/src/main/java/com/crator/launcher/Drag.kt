@@ -79,6 +79,7 @@ class DragState {
     private var startPos = Offset.Zero
     private var onTap: (() -> Unit)? = null
     var currentPage = 0
+    var spanOf: (String) -> Pair<Int, Int> = { Item.span(it) }
     /** Όσο είναι ανοιχτό το συρτάρι, οι στόχοι είναι τα εικονίδια του συρταριού */
     var drawerOpen = false
     val drawerSlots = HashMap<String, Rect>()
@@ -116,7 +117,7 @@ class DragState {
             is DropTarget.DockAt -> (dockSlots[t.index] ?: dockSlots[t.index - 1])?.center ?: dockRect?.center ?: pos
             is DropTarget.Cell -> {
                 val g = grids[t.page] ?: return pos
-                val (sx0, sy0) = Item.span(item)
+                val (sx0, sy0) = spanOf(item)
                 val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)
                 val c = (t.cell % g.cols).coerceAtMost(g.cols - sx); val r = (t.cell / g.cols).coerceAtMost(g.rows - sy)
                 val cw = g.rect.width / g.cols; val ch = g.rect.height / g.rows
@@ -262,7 +263,7 @@ fun DragLayer(drag: DragState, prefs: Prefs, byKey: Map<String, AppInfo>) {
         // Επισήμανση θέσης (απαλό γυάλινο «κελί»)
         if (target is DropTarget.Cell && drag.moved && Item.isSized(item) && !(target.center && Item.isApp(item) && drag.grids[target.page] != null && drag.reflow == null && hoverOccupied(drag, prefs, target))) {
             drag.grids[target.page]?.let { g ->
-                val (sx0, sy0) = Item.span(item)
+                val (sx0, sy0) = drag.spanOf(item)
                 val sx = sx0.coerceAtMost(g.cols); val sy = sy0.coerceAtMost(g.rows)
                 val c = (target.cell % g.cols).coerceAtMost(g.cols - sx); val r = (target.cell / g.cols).coerceAtMost(g.rows - sy)
                 val cw = g.rect.width / g.cols; val ch = g.rect.height / g.rows
