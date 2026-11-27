@@ -283,7 +283,8 @@ fun CratorWidget(
     val press = Modifier.longPress(onLongPress)
     when (Item.cratorType(item)) {
         "clock" -> {
-            val now by produceState(Date()) { while (true) { value = Date(); delay(60_000L - System.currentTimeMillis() % 60_000L + 50) } }
+            val res = rememberResumed()
+            val now by produceState(Date(), res) { value = Date(); while (res) { value = Date(); delay(60_000L - System.currentTimeMillis() % 60_000L + 50) } }
             val el = Locale("el", "GR")
             Column(card.then(press), verticalArrangement = Arrangement.Center) {
                 Text(SimpleDateFormat("HH:mm", el).format(now), color = Smoke.pearl, fontSize = 72.sp, fontWeight = FontWeight.ExtraLight, letterSpacing = (-2.5).sp)
@@ -294,8 +295,10 @@ fun CratorWidget(
             SearchPill(prefs, Modifier.then(press), onClick = onClaude)
         }
         "system" -> {
-            val s by produceState(Triple(0f, 0f, 0)) {
-                while (true) {
+            val res = rememberResumed()
+            // δειγματοληψία μόνο όταν φαίνεται η αρχική — στο παρασκήνιο σταματάει (μπαταρία)
+            val s by produceState(Triple(0f, 0f, 0), res) {
+                while (res) {
                     value = withContext(Dispatchers.IO) {
                         val am = ctx.getSystemService(ActivityManager::class.java)
                         val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }

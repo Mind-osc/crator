@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
                 CompositionLocalProvider(LocalContentColor provides Smoke.pearl) {
                     // Επαναφόρτωση εικονιδίων όταν αλλάζει το pack
                     val first = remember { booleanArrayOf(true) }
-                    LaunchedEffect(prefs.iconPack) { if (first[0]) first[0] = false else repo.load() }
+                    LaunchedEffect(prefs.iconPack, prefs.iconShape == IconShape.Original, prefs.themedIcons) { if (first[0]) first[0] = false else repo.load() }
                     CratorRoot(this, prefs, repo)
                 }
             }
@@ -100,6 +100,13 @@ class MainActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             super.onActivityResult(requestCode, resultCode, data)
         }
+    }
+
+    // Όταν πιέζεται η μνήμη: ελευθερώνουμε το WebView του Claude (ξαναφορτώνει όταν το ανοίξεις)
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) ClaudeWeb.release()
+        else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) ClaudeWeb.pause()
     }
 
     override fun onDestroy() {

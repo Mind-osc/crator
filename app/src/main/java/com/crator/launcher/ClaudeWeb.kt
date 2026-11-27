@@ -109,6 +109,10 @@ object ClaudeWeb {
         Toast.makeText(ctx, "Αποσυνδέθηκες από το claude.ai", Toast.LENGTH_SHORT).show()
     }
 
+    /** Όταν δεν φαίνεται: σταματούν JS/timers (μπαταρία) */
+    fun pause() { view?.let { it.onPause(); it.pauseTimers() } }
+    fun resume() { view?.let { it.onResume(); it.resumeTimers() } }
+
     fun release() {
         view?.let { (it.parent as? ViewGroup)?.removeView(it); it.destroy() }
         view = null
@@ -120,6 +124,10 @@ fun ClaudeWebView(seed: String, modifier: Modifier = Modifier) {
     val activity = LocalContext.current as MainActivity
     val loading by ClaudeWeb.loading
     LaunchedEffect(seed) { if (seed.isNotBlank()) ClaudeWeb.newChat(seed) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        ClaudeWeb.resume()
+        onDispose { ClaudeWeb.pause() }
+    }
     Box(modifier) {
         AndroidView(
             factory = { ClaudeWeb.get(activity).also { (it.parent as? ViewGroup)?.removeView(it) } },

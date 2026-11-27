@@ -496,7 +496,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                     scaleX = sc; scaleY = sc
                     alpha = 1f - 0.92f * p
                 }
-                .blur(blur)
+                .then(if (blur > 0.3.dp) Modifier.blur(blur) else Modifier) // χωρίς blur = χωρίς επιπλέον layer στη GPU
                 .pointerInput(Unit) {
                     var total = 0f
                     var base = 0f
@@ -1137,8 +1137,11 @@ fun Modifier.pageEffect(state: PagerState, page: Int, effect: PageEffect): Modif
 @Composable
 private fun ClockHeader(prefs: Prefs) {
     val ctx = LocalContext.current
-    val now by produceState(Date()) {
-        while (true) {
+    val resumedClock = rememberResumed()
+    // ενημέρωση μόνο όταν φαίνεται ο launcher (στο παρασκήνιο κοιμάται)
+    val now by produceState(Date(), resumedClock) {
+        value = Date()
+        while (resumedClock) {
             value = Date()
             delay(60_000L - (System.currentTimeMillis() % 60_000L) + 50)
         }

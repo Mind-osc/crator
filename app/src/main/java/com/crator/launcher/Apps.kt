@@ -45,7 +45,8 @@ class AppInfo(
 private val MARKS = Regex("\\p{Mn}+")
 fun String.norm(): String = MARKS.replace(Normalizer.normalize(lowercase(), Normalizer.Form.NFD), "")
 
-private const val S = 192
+// 168px αρκεί για εικονίδια ως ~60dp· κάθε bitmap = ~110KB, οπότε φτιάχνουμε ΜΟΝΟ όσα χρειάζονται
+private const val S = 168
 
 class AppRepository(private val context: Context, private val prefs: Prefs) {
     val apps = mutableStateOf<List<AppInfo>>(emptyList())
@@ -107,14 +108,16 @@ class AppRepository(private val context: Context, private val prefs: Prefs) {
             if (d != null) return IconData(d.toBitmap(S, S).asImageBitmap(), null, null)
         }
         val d = ai.getIcon(0)
-        val raw = d.toBitmap(S, S).asImageBitmap()
-        var full: ImageBitmap? = null
+        // Εξοικονόμηση RAM: ένα bitmap ανά εφαρμογή (το raw και το full μοιράζονται το ίδιο όταν γίνεται),
+        // το μονόχρωμο μόνο αν είναι ανοιχτά τα themed εικονίδια
+        val original = prefs.iconShape == IconShape.Original
         var mono: ImageBitmap? = null
-        if (d is AdaptiveIconDrawable) {
-            full = renderLayers(d.background, d.foreground)
-            if (Build.VERSION.SDK_INT >= 33) d.monochrome?.let { mono = renderLayers(null, it) }
+        if (Build.VERSION.SDK_INT >= 33 && prefs.themedIcons && d is AdaptiveIconDrawable) d.monochrome?.let { mono = renderLayers(null, it) }
+        if (d is AdaptiveIconDrawable && !original) {
+            val full = renderLayers(d.background, d.foreground)
+            return IconData(full, full, mono)
         }
-        return IconData(raw, full, mono)
+        return IconData(d.toBitmap(S, S).asImageBitmap(), null, mono)
     }
 
     private fun renderLayers(bg: Drawable?, fg: Drawable?): ImageBitmap {
