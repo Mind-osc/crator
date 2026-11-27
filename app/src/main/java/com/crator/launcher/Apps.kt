@@ -19,6 +19,7 @@ import android.provider.MediaStore
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -77,10 +78,53 @@ class AppRepository(private val context: Context, private val prefs: Prefs) {
     fun load() {
         job?.cancel()
         job = scope.launch {
+            // Ψυχρή εκκίνηση (π.χ. το σύστημα έκλεισε τον launcher για μνήμη): τα εικονίδια
+            // εμφανίζονται αμέσως από τον δίσκο, μετά ανανεώνονται στο παρασκήνιο
+            if (apps.value.isEmpty()) {
+                val cached = withContext(Dispatchers.IO) { runCatching { readCache() }.getOrNull() }
+                if (!cached.isNullOrEmpty()) apps.value = cached
+            }
             val list = withContext(Dispatchers.Default) { query() }
             apps.value = list
             onLoaded?.invoke()
+            withContext(Dispatchers.IO) { runCatching { writeCache(list) } }
         }
+    }
+
+    private fun cacheSig() = "v1|$S|${prefs.iconPack}|${prefs.iconShape == IconShape.Original}|${prefs.themedIcons}"
+    private val cacheDir get() = java.io.File(context.cacheDir, "icons")
+
+    private fun readCache(): List<AppInfo> {
+        val idx = java.io.File(cacheDir, "index.tsv")
+        if (!idx.exists()) return emptyList()
+        val lines = idx.readLines()
+        if (lines.firstOrNull() != cacheSig()) return emptyList()
+        val user = Process.myUserHandle()
+        val labels = prefs.labels
+        return lines.drop(1).mapIndexedNotNull { i, line ->
+            val p = line.split('\t')
+            if (p.size < 4) return@mapIndexedNotNull null
+            val cn = ComponentName.unflattenFromString(p[0]) ?: return@mapIndexedNotNull null
+            val bmp = android.graphics.BitmapFactory.decodeFile(java.io.File(cacheDir, "$i.png").path)?.asImageBitmap()
+                ?: return@mapIndexedNotNull null
+            val mono = if ('m' in p[3]) android.graphics.BitmapFactory.decodeFile(java.io.File(cacheDir, "${i}m.png").path)?.asImageBitmap() else null
+            AppInfo(cn, labels[p[0]] ?: p[2], p[2], p[0], IconData(bmp, if ('f' in p[3]) bmp else null, mono), user)
+        }
+    }
+
+    private fun writeCache(list: List<AppInfo>) {
+        val dir = cacheDir
+        dir.mkdirs()
+        dir.listFiles()?.forEach { it.delete() }
+        val sb = StringBuilder(cacheSig()).append('\n')
+        list.forEachIndexed { i, a ->
+            java.io.File(dir, "$i.png").outputStream().use { a.icon.raw.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+            a.icon.mono?.let { m -> java.io.File(dir, "${i}m.png").outputStream().use { m.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) } }
+            val flags = (if (a.icon.full != null) "f" else "") + (if (a.icon.mono != null) "m" else "") + "-"
+            sb.append(a.key).append('\t').append(a.label.replace('\t', ' ')).append('\t')
+                .append(a.originalLabel.replace('\t', ' ')).append('\t').append(flags).append('\n')
+        }
+        java.io.File(dir, "index.tsv").writeText(sb.toString())
     }
 
     private fun query(): List<AppInfo> {

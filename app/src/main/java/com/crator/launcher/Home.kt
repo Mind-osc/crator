@@ -24,6 +24,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -461,13 +466,14 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
 
     val blurTarget = when {
         overlay != Overlay.None && overlay != Overlay.Drawer -> prefs.blurStrength.dp
-        sheetApp != null || folderSheet != null || widgetSheet != null || homeMenu -> (prefs.blurStrength * 0.6f).dp
+        // το widget που αλλάζει μέγεθος ΔΕΝ θολώνει: φαίνονται οι αλλαγές ζωντανά
+        sheetApp != null || folderSheet != null || homeMenu -> (prefs.blurStrength * 0.6f).dp
         else -> 0.dp
     }
     val blur by animateDpAsState(blurTarget, Motion.soft(Motion.overlay), label = "blur")
     val recede by androidx.compose.animation.core.animateFloatAsState(
         when {
-            homeMenu || overlay == Overlay.Widgets -> 0.9f
+            overlay == Overlay.Widgets -> 0.9f
             folderOpen != null || anySheet || overlay == Overlay.Claude -> 0.95f
             drag.active && drag.moved -> 0.97f
             else -> 1f
@@ -477,7 +483,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     val swipeDownA by rememberUpdatedState { act(prefs.swipeDown) }
     val swipeUpA by rememberUpdatedState { act(prefs.swipeUp) }
     val doubleA by rememberUpdatedState { act(prefs.doubleTap) }
-    val longA by rememberUpdatedState { scope.launch { delay(140); if (!drag.active && sheetApp == null && folderSheet == null && widgetSheet == null) homeMenu = true } }
+    val longA by rememberUpdatedState { scope.launch { delay(140); if (!drag.active && sheetApp == null && folderSheet == null && widgetSheet == null) { popupAnchor = drag.lastPointer; homeMenu = true } } }
     val gesturesOn by rememberUpdatedState(!onDashboard && overlay == Overlay.None && !drag.active && !anySheet)
 
     Box(
@@ -568,7 +574,15 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                             onFolder = ::openFolder,
                             onClaude = { openSearch() },
                             onSettings = ::openSettings,
-                            bottomPad = barH
+                            bottomPad = barH,
+                            editCell = widgetSheet?.takeIf { it.first == idx }?.second,
+                            onEditCell = { c -> widgetSheet = if (c == null) null else idx to c },
+                            onRemoveWidget = { c ->
+                                val it0 = prefs.pages.getOrNull(idx)?.get(c)
+                                prefs.removeHomeAt(idx, c)
+                                if (it0 != null && Item.isWidget(it0)) widgets.delete(Item.widgetId(it0))
+                                widgetSheet = null
+                            }
                         )
                     }
                 }
@@ -656,7 +670,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         }
 
         Presence(if (homeMenu) Unit else null) { HomeMenu(
-            prefs,
+            prefs, popupAnchor,
             onWidgets = { homeMenu = false; pickerPkg = null; overlay = Overlay.Widgets },
             onWallpaper = { homeMenu = false; Actions.start(ctx, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Ταπετσαρία")) },
             onSettings = { homeMenu = false; openSettings(null) },
@@ -672,9 +686,6 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             },
             onClose = { homeMenu = false }
         ) }
-        Presence(widgetSheet) { (p, c) ->
-            WidgetSheet(prefs, widgets, p, c, onClose = { widgetSheet = null })
-        }
         Presence(folderSheet) { id ->
             FolderMenuPopup(id, popupAnchor, prefs, onOpen = { folderSheet = null; folderAnchor = popupAnchor; folderOpen = id }, onClose = { folderSheet = null })
         }
@@ -715,7 +726,10 @@ private fun HomePage(
     onFolder: (String, android.graphics.Rect?) -> Unit,
     onClaude: () -> Unit,
     onSettings: (String?) -> Unit,
-    bottomPad: androidx.compose.ui.unit.Dp = 0.dp
+    bottomPad: androidx.compose.ui.unit.Dp = 0.dp,
+    editCell: Int? = null,
+    onEditCell: (Int?) -> Unit = {},
+    onRemoveWidget: (Int) -> Unit = {}
 ) {
     val items = prefs.pages.getOrNull(index) ?: emptyMap()
     // στόχος φακέλου: εικονίδιο πάνω στο οποίο αιωρείται μια εφαρμογή
@@ -804,6 +818,13 @@ private fun HomePage(
                 }
                 }
             } }
+            // αλλαγή μεγέθους widget: πάτημα έξω = τέλος
+            val editItem = editCell?.let { items[it] }?.takeIf { Item.isSized(it) }
+            if (editCell != null && editItem != null) {
+                Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { onEditCell(null) } })
+                WidgetResizeFrame(index, editCell, editItem, prefs, cw, ch,
+                    onCell = { onEditCell(it) }, onDone = { onEditCell(null) }, onRemove = { onRemoveWidget(editCell) })
+            }
         }
         Spacer(Modifier.height(bottomPad))
     }
@@ -964,10 +985,11 @@ private fun AppSheet(
     if (picking) IconPicker(app, prefs, repo) { picking = false; onClose() }
 }
 
-/** Μενού παρατεταμένου πατήματος σε κενό σημείο: σκούρο γυαλί, συμπαγές, πλακίδια με έντονα χρώματα */
+/** Μενού παρατεταμένου πατήματος σε κενό σημείο: μίνιμαλ μακρόστενη λίστα, εκεί που πάτησες */
 @Composable
 private fun HomeMenu(
     prefs: Prefs,
+    anchor: Offset,
     onWidgets: () -> Unit,
     onWallpaper: () -> Unit,
     onSettings: () -> Unit,
@@ -975,78 +997,120 @@ private fun HomeMenu(
     onRemovePage: () -> Unit,
     onClose: () -> Unit
 ) {
-    BottomCard(onClose) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MenuTile("Widgets", Icons.Rounded.Widgets, Color(0xFFB37CFF), Modifier.weight(1f), onWidgets)
-                MenuTile("Ταπετσαρία", Icons.Rounded.Wallpaper, Color(0xFF34E0C6), Modifier.weight(1f), onWallpaper)
-                MenuTile("Ρυθμίσεις", Icons.Rounded.Tune, Color(0xFF4DA3FF), Modifier.weight(1f), onSettings)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MenuTile("Νέα σελίδα", Icons.Rounded.AddBox, Color(0xFFB9F35A), Modifier.weight(1f), onAddPage)
-                MenuTile("Διαγραφή σελίδας", Icons.Rounded.Remove, Color(0xFFFF5A6A), Modifier.weight(1f), onRemovePage)
-                MenuTile(
-                    if (prefs.lockLayout) "Ξεκλείδωμα" else "Κλείδωμα",
-                    if (prefs.lockLayout) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                    Color(0xFFFFC23D), Modifier.weight(1f)
-                ) { prefs.lockLayout = !prefs.lockLayout; onClose() }
-            }
+    AnchoredPopup(anchor, 10.dp, onClose, corner = 16.dp) {
+        Column(Modifier.width(IntrinsicSize.Max).widthIn(min = 150.dp, max = 200.dp).padding(4.dp)) {
+            MenuLine(Icons.Rounded.Widgets, Color(0xFFB37CFF), "Widgets", onWidgets)
+            MenuLine(Icons.Rounded.Wallpaper, Color(0xFF34E0C6), "Ταπετσαρία", onWallpaper)
+            MenuLine(Icons.Rounded.Tune, Color(0xFF4DA3FF), "Ρυθμίσεις", onSettings)
+            Box(Modifier.padding(horizontal = 10.dp, vertical = 3.dp).fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.08f)))
+            MenuLine(Icons.Rounded.AddBox, Color(0xFFB9F35A), "Νέα σελίδα", onAddPage)
+            MenuLine(Icons.Rounded.Remove, Color(0xFFFF5A6A), "Διαγραφή σελίδας", onRemovePage)
+            MenuLine(
+                if (prefs.lockLayout) Icons.Rounded.LockOpen else Icons.Rounded.Lock, Color(0xFFFFC23D),
+                if (prefs.lockLayout) "Ξεκλείδωμα" else "Κλείδωμα"
+            ) { prefs.lockLayout = !prefs.lockLayout; onClose() }
         }
     }
 }
 
+/**
+ * Αλλαγή μεγέθους widget πάνω στην αρχική: λεπτές καμπύλες γωνίες, τις πιάνεις με το δάχτυλο
+ * και το πλαίσιο ακολουθεί· στο άφημα κουμπώνει στο πλέγμα (αν χωράει).
+ */
 @Composable
-private fun MenuTile(label: String, icon: ImageVector, color: Color, modifier: Modifier, onClick: () -> Unit) {
-    val src = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val pressed by src.collectIsPressedAsState()
-    val sc by androidx.compose.animation.core.animateFloatAsState(if (pressed) 0.95f else 1f, Motion.snappy(Motion.icon), label = "tile")
-    // σαν τις κάρτες του ταμπλό: κατάμαυρο, χωρίς χρωματιστό περίγραμμα, μόνο το εικονίδιο σε χρώμα
-    val shape = RoundedCornerShape(20.dp)
-    Column(
-        modifier
-            .height(64.dp)
-            .graphicsLayer { scaleX = sc; scaleY = sc }
-            .shadow(8.dp, shape, ambientColor = Color.Black, spotColor = Color.Black)
-            .clip(shape)
-            .background(if (pressed) Color(0xFF16161B) else Color.Black)
-            .border(0.6.dp, Color.White.copy(alpha = 0.06f), shape)
-            .clickable(interactionSource = src, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
-    }
-}
-
-/** Μενού widget: αλλαγή μεγέθους / αφαίρεση */
-@Composable
-private fun WidgetSheet(prefs: Prefs, widgets: WidgetController, page: Int, cell: Int, onClose: () -> Unit) {
-    val item = prefs.pages.getOrNull(page)?.get(cell) ?: run { onClose(); return }
+private fun WidgetResizeFrame(
+    page: Int, cell: Int, item: String, prefs: Prefs, cw: androidx.compose.ui.unit.Dp, ch: androidx.compose.ui.unit.Dp,
+    onCell: (Int) -> Unit, onDone: () -> Unit, onRemove: () -> Unit
+) {
+    val d = LocalDensity.current
+    val cwPx = with(d) { cw.toPx() }; val chPx = with(d) { ch.toPx() }
     val (sx, sy) = Item.span(item)
-    val name = if (Item.isWidget(item)) widgets.info(Item.widgetId(item))?.loadLabel(LocalContext.current.packageManager) ?: "Widget"
-    else CRATOR_WIDGETS.firstOrNull { it.type == Item.cratorType(item) }?.name ?: "Widget"
-    fun resize(nx: Int, ny: Int) {
-        if (nx < 1 || ny < 1) return
-        if (prefs.fits(page, cell, nx, ny, exclude = cell)) prefs.setHome(page, cell, Item.resized(item, nx, ny))
+    val r0 = cell / prefs.cols; val c0 = cell % prefs.cols
+    var dl by remember(cell, item) { mutableStateOf(0f) }
+    var dt by remember(cell, item) { mutableStateOf(0f) }
+    var dr by remember(cell, item) { mutableStateOf(0f) }
+    var db by remember(cell, item) { mutableStateOf(0f) }
+    val L = c0 * cwPx + dl; val T = r0 * chPx + dt
+    val R = (c0 + sx) * cwPx + dr; val B = (r0 + sy) * chPx + db
+    // πού θα κουμπώσει
+    val nc = kotlin.math.round(L / cwPx).toInt().coerceIn(0, prefs.cols - 1)
+    val nr = kotlin.math.round(T / chPx).toInt().coerceIn(0, prefs.gridRows - 1)
+    val nsx = (kotlin.math.round(R / cwPx).toInt() - nc).coerceIn(1, prefs.cols - nc)
+    val nsy = (kotlin.math.round(B / chPx).toInt() - nr).coerceIn(1, prefs.gridRows - nr)
+    val ok = prefs.fits(page, nr * prefs.cols + nc, nsx, nsy, exclude = cell)
+    fun commit() {
+        if (ok && (nc != c0 || nr != r0 || nsx != sx || nsy != sy)) {
+            prefs.removeHomeAt(page, cell)
+            val na = nr * prefs.cols + nc
+            prefs.setHome(page, na, Item.resized(item, nsx, nsy))
+            onCell(na)
+        }
+        dl = 0f; dt = 0f; dr = 0f; db = 0f
     }
-    BottomCard(onClose) {
-        Text(name, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        Text("Μέγεθος: $sx × $sy", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
-        Spacer(Modifier.height(12.dp))
-        SpanRow("Πλάτος", { resize(sx - 1, sy) }, { resize(sx + 1, sy) })
-        SpanRow("Ύψος", { resize(sx, sy - 1) }, { resize(sx, sy + 1) })
-        Spacer(Modifier.height(8.dp))
-        ChipGrid(listOf(
-            "Αφαίρεση" to {
-                prefs.removeHomeAt(page, cell)
-                if (Item.isWidget(item)) widgets.delete(Item.widgetId(item))
-                onClose()
-            },
-            "Κλείσιμο" to onClose
-        ))
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    // στόχος κουμπώματος: απαλό γυάλινο πλαίσιο
+    val tx by animateDpAsState(with(d) { (nc * cwPx).toDp() }, Motion.lively(Motion.drag), label = "tx")
+    val ty by animateDpAsState(with(d) { (nr * chPx).toDp() }, Motion.lively(Motion.drag), label = "ty")
+    val tw by animateDpAsState(with(d) { (nsx * cwPx).toDp() }, Motion.lively(Motion.drag), label = "tw")
+    val th by animateDpAsState(with(d) { (nsy * chPx).toDp() }, Motion.lively(Motion.drag), label = "th")
+    val busy = dl != 0f || dt != 0f || dr != 0f || db != 0f
+    if (busy) Box(
+        Modifier.offset(tx, ty).size(tw, th).padding(4.dp)
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (ok) Color.White.copy(alpha = 0.10f) else Smoke.danger.copy(alpha = 0.16f))
+    )
+    // οι 4 καμπύλες γωνίες, εκεί που είναι το δάχτυλο
+    val pad = with(d) { 3.dp.toPx() }
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val arm = 22.dp.toPx(); val rad = 16.dp.toPx(); val sw = 2.4.dp.toPx()
+        val col = Color.White.copy(alpha = 0.92f)
+        val st = androidx.compose.ui.graphics.drawscope.Stroke(sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        val l = L + pad; val t = T + pad; val r = R - pad; val b = B - pad
+        fun corner(x: Float, y: Float, hx: Float, vy: Float) {
+            // από το οριζόντιο χέρι, γύρω από την καμπύλη, στο κάθετο
+            val p = androidx.compose.ui.graphics.Path().apply {
+                moveTo(x + hx * arm, y)
+                lineTo(x + hx * rad, y)
+                quadraticBezierTo(x, y, x, y + vy * rad)
+                lineTo(x, y + vy * arm)
+            }
+            drawPath(p, col, style = st)
+        }
+        corner(l, t, 1f, 1f); corner(r, t, -1f, 1f); corner(l, b, 1f, -1f); corner(r, b, -1f, -1f)
+    }
+    // λαβές αφής 48dp σε κάθε γωνία
+    val hs = 48.dp
+    listOf(false to false, true to false, false to true, true to true).forEach { (right, bottom) ->
+        val hx = with(d) { ((if (right) R else L)).toDp() } - hs / 2
+        val hy = with(d) { ((if (bottom) B else T)).toDp() } - hs / 2
+        Box(
+            Modifier.offset(hx, hy).size(hs)
+                .pointerInput(cell, item, right, bottom) {
+                    detectDragGestures(
+                        onDragStart = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress) },
+                        onDragEnd = { commit() },
+                        onDragCancel = { dl = 0f; dt = 0f; dr = 0f; db = 0f }
+                    ) { ch2, a ->
+                        ch2.consume()
+                        if (right) dr += a.x else dl += a.x
+                        if (bottom) db += a.y else dt += a.y
+                    }
+                }
+        )
+    }
+    // μίνιμαλ μενού πάνω (ή κάτω) από το widget
+    val above = r0 > 0
+    val menuY = with(d) { (if (above) T else B).toDp() } + if (above) (-40).dp else 8.dp
+    Row(
+        Modifier.offset(with(d) { L.toDp() } + 6.dp, menuY)
+            .shadow(16.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black, spotColor = Color.Black)
+            .smokedGlass(RoundedCornerShape(14.dp), alpha = 0.9f, tint = Color(0xFF09090C))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.width(IntrinsicSize.Max)) { MenuLine(Icons.Rounded.Delete, Smoke.danger, "Αφαίρεση", onRemove) }
+        Box(Modifier.width(0.5.dp).height(16.dp).background(Color.White.copy(alpha = 0.1f)))
+        Box(Modifier.width(IntrinsicSize.Max)) { MenuLine(Icons.Rounded.Check, Color(0xFF7DE3C2), "Τέλος", onDone) }
     }
 }
 

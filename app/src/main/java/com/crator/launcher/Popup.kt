@@ -180,7 +180,7 @@ private fun ActionTile(icon: ImageVector, tint: Color, name: String, badge: Imag
 
 /** Μίνιμαλ γραμμή μενού: πολύ μικρό εικονίδιο αριστερά, μικρά γράμματα */
 @Composable
-private fun MenuLine(icon: ImageVector, tint: Color, name: String, onClick: () -> Unit) {
+fun MenuLine(icon: ImageVector, tint: Color, name: String, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp),
