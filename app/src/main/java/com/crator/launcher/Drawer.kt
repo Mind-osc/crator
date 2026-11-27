@@ -80,6 +80,8 @@ private sealed interface DrawerEntry {
     val key: String
     class F(val id: String, val folder: Folder) : DrawerEntry { override val key = "f:$id" }
     class A(val app: AppInfo) : DrawerEntry { override val key = app.key }
+    /** ανοιχτός φάκελος μέσα στο συρτάρι: τετράγωνο κάτω από τη σειρά του */
+    class P(val id: String, val folder: Folder) : DrawerEntry { override val key = "p:$id" }
 }
 
 /** Λεπτή μπάρα αναζήτησης (ίδιο στυλ σε αρχική και συρτάρι) */
@@ -158,6 +160,22 @@ fun AppDrawer(
             folders.sortedBy { it.second.name.norm() }.map { DrawerEntry.F(it.first, it.second) } +
                 apps.filter { it.key !in prefs.hidden && it.key !in inFolders }.map { DrawerEntry.A(it) }
         }
+    }
+    // Φάκελος που ανοίγει «μέσα» στο συρτάρι (σπρώχνει τα από κάτω), όχι φούσκα
+    var openId by remember { mutableStateOf<String?>(null) }
+    var shownId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(openId) {
+        if (openId == null) { kotlinx.coroutines.delay(260); if (openId == null) shownId = null }
+        else shownId = openId
+    }
+    LaunchedEffect(nq) { if (nq.isNotEmpty()) openId = null }
+    val gridList: List<DrawerEntry> = run {
+        val sid = shownId ?: return@run list
+        val i = list.indexOfFirst { it is DrawerEntry.F && it.id == sid }
+        if (i < 0) return@run list
+        val f = (list[i] as DrawerEntry.F).folder
+        val at = (((i / prefs.drawerCols) + 1) * prefs.drawerCols).coerceAtMost(list.size)
+        list.toMutableList().also { it.add(at, DrawerEntry.P(sid, f)) }
     }
     val close by rememberUpdatedState(onClose)
     val conn = remember {
@@ -273,7 +291,16 @@ fun AppDrawer(
                 contentPadding = PaddingValues(6.dp, 4.dp, 6.dp, 16.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                itemsIndexed(list, key = { _, it -> it.key }) { i, e ->
+                itemsIndexed(
+                    gridList, key = { _, it -> it.key },
+                    span = { _, e -> androidx.compose.foundation.lazy.grid.GridItemSpan(if (e is DrawerEntry.P) maxLineSpan else 1) }
+                ) { i, e ->
+                    if (e is DrawerEntry.P) {
+                        InlineFolder(e.folder, byKey, prefs, openId == e.id, labelColor,
+                            onLaunch = { a, b -> onLaunch(a, b) }, onLong = onLong,
+                            modifier = Modifier.animateItemPlacement())
+                        return@itemsIndexed
+                    }
                     val hover by androidx.compose.animation.core.animateFloatAsState(if (hoverKey == e.key) 1f else 0f, Motion.lively(Motion.drag), label = "dh")
                     StaggerIn(
                         i,
@@ -292,7 +319,13 @@ fun AppDrawer(
                             Box(Modifier.graphicsLayer { val sc = 1f - 0.12f * hover; scaleX = sc; scaleY = sc }) {
                                 when (e) {
                                     is DrawerEntry.A -> AppCell(e.app, prefs, prefs.drawerIconSize.dp, true, { onLaunch(e.app, it) }, { onLong(e.app) }, labelColor = labelColor)
-                                    is DrawerEntry.F -> FolderCell(e.folder, byKey, prefs, prefs.drawerIconSize.dp, true, { b -> onFolder(e.id, b) }, { onFolderLong(e.id) }, pop = pop)
+                                    is DrawerEntry.F -> {
+                                        val on by androidx.compose.animation.core.animateFloatAsState(if (openId == e.id) 1f else 0f, Motion.lively(Motion.sheet), label = "fo")
+                                        FolderCell(e.folder, byKey, prefs, prefs.drawerIconSize.dp, true,
+                                            { openId = if (openId == e.id) null else e.id }, { onFolderLong(e.id) }, pop = pop,
+                                            modifier = Modifier.graphicsLayer { val sc = 1f + 0.06f * on; scaleX = sc; scaleY = sc })
+                                    }
+                                    else -> {}
                                 }
                             }
                         }
@@ -308,8 +341,8 @@ fun AppDrawer(
                             .clip(RoundedCornerShape(16.dp))
                             .background(if (hoverKey == e.key) Color.White.copy(alpha = 0.12f) else Color.Transparent)
                             .combinedClickable(
-                                onClick = { when (e) { is DrawerEntry.A -> onLaunch(e.app, null); is DrawerEntry.F -> onFolder(e.id, null) } },
-                                onLongClick = { when (e) { is DrawerEntry.A -> onLong(e.app); is DrawerEntry.F -> onFolderLong(e.id) } }
+                                onClick = { when (e) { is DrawerEntry.A -> onLaunch(e.app, null); is DrawerEntry.F -> onFolder(e.id, null); else -> {} } },
+                                onLongClick = { when (e) { is DrawerEntry.A -> onLong(e.app); is DrawerEntry.F -> onFolderLong(e.id); else -> {} } }
                             )
                             .padding(10.dp).animateItemPlacement(),
                         verticalAlignment = Alignment.CenterVertically
@@ -317,10 +350,11 @@ fun AppDrawer(
                         when (e) {
                             is DrawerEntry.A -> AppIcon(e.app, 40.dp, prefs)
                             is DrawerEntry.F -> FolderIcon(e.folder, byKey, prefs, 40.dp)
+                            else -> {}
                         }
                         Spacer(Modifier.width(16.dp))
                         Text(
-                            when (e) { is DrawerEntry.A -> e.app.label; is DrawerEntry.F -> e.folder.name },
+                            when (e) { is DrawerEntry.A -> e.app.label; is DrawerEntry.F -> e.folder.name; is DrawerEntry.P -> "" },
                             style = labelStyle(prefs, 18).copy(textAlign = TextAlign.Start, color = labelColor)
                         )
                     }
@@ -330,5 +364,52 @@ fun AppDrawer(
 
         if (prefs.drawerSearchBottom) search()
     }
+    }
+}
+
+
+/** Ανοιχτός φάκελος μέσα στο συρτάρι: απαλά πιο ανοιχτό τετράγωνο που ξεδιπλώνεται κάτω από τη σειρά του */
+@Composable
+private fun InlineFolder(
+    f: Folder,
+    byKey: Map<String, AppInfo>,
+    prefs: Prefs,
+    open: Boolean,
+    labelColor: Color,
+    onLaunch: (AppInfo, android.graphics.Rect?) -> Unit,
+    onLong: (AppInfo) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val state = remember { androidx.compose.animation.core.MutableTransitionState(false) }
+    state.targetState = open
+    androidx.compose.animation.AnimatedVisibility(
+        state,
+        modifier = modifier.fillMaxWidth(),
+        enter = androidx.compose.animation.expandVertically(Motion.lively(Motion.sheet), expandFrom = Alignment.Top) +
+            androidx.compose.animation.fadeIn(Motion.lively(Motion.sheet)),
+        exit = androidx.compose.animation.shrinkVertically(Motion.snappy(Motion.sheet), shrinkTowards = Alignment.Top) +
+            androidx.compose.animation.fadeOut(Motion.snappy(Motion.sheet))
+    ) {
+        val apps = f.apps.mapNotNull { byKey[it] }
+        val cols = prefs.drawerCols.coerceAtLeast(1)
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.White.copy(alpha = 0.09f))
+                .border(0.6.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                .padding(vertical = 8.dp)
+        ) {
+            if (apps.isEmpty()) Text("Άδειος φάκελος", color = Smoke.mist, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
+            apps.chunked(cols).forEach { row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { a ->
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+                            AppCell(a, prefs, prefs.drawerIconSize.dp, true, { onLaunch(a, it) }, { onLong(a) }, labelColor = labelColor)
+                        }
+                    }
+                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
     }
 }
