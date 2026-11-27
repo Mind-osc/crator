@@ -11,8 +11,8 @@ android {
         applicationId = "com.crator.launcher"
         minSdk = 31
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.8"
+        versionCode = 16
+        versionName = "0.8.1"
     }
 
     signingConfigs {

@@ -197,6 +197,16 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             else -> overlay = Overlay.None
         }
     }
+    // Συρτάρι «διαδραστικό» (σαν Nova): η πρόοδος 0..1 ακολουθεί το δάχτυλο
+    val drawerP = remember { androidx.compose.animation.core.Animatable(0f) }
+    var drawerDragging by remember { mutableStateOf(false) }
+    val drawerShown by remember { androidx.compose.runtime.derivedStateOf { drawerP.value > 0.001f } }
+    LaunchedEffect(overlay) {
+        if (!drawerDragging) {
+            if (overlay == Overlay.Drawer) drawerP.animateTo(1f, Motion.lively(Motion.overlay))
+            else drawerP.animateTo(0f, Motion.snappy(Motion.overlay))
+        }
+    }
     LaunchedEffect(overlay) {
         if (overlay != Overlay.Drawer) { drawerSearchMode = false; drawerSeed = "" }
         activity.setBlurBehind(if (overlay == Overlay.Claude || overlay == Overlay.Drawer) prefs.blurStrength * 3 else 0)
@@ -402,7 +412,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     }
 
     val blurTarget = when {
-        overlay != Overlay.None -> prefs.blurStrength.dp
+        overlay != Overlay.None && overlay != Overlay.Drawer -> prefs.blurStrength.dp
         sheetApp != null || folderSheet != null || widgetSheet != null || homeMenu -> (prefs.blurStrength * 0.6f).dp
         else -> 0.dp
     }
@@ -410,7 +420,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     val recede by androidx.compose.animation.core.animateFloatAsState(
         when {
             homeMenu || overlay == Overlay.Widgets -> 0.9f
-            folderOpen != null || anySheet || overlay == Overlay.Drawer || overlay == Overlay.Claude -> 0.95f
+            folderOpen != null || anySheet || overlay == Overlay.Claude -> 0.95f
             drag.active && drag.moved -> 0.97f
             else -> 1f
         }, Motion.lively(Motion.overlay), label = "recede"
@@ -432,18 +442,46 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
         Column(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer { scaleX = recede; scaleY = recede }
+                .graphicsLayer {
+                    val p = drawerP.value
+                    val sc = recede * (1f - 0.06f * p)
+                    scaleX = sc; scaleY = sc
+                    alpha = 1f - 0.92f * p
+                }
                 .blur(blur)
                 .pointerInput(Unit) {
                     var total = 0f
+                    val vt = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                    fun settle(open: Boolean) {
+                        drawerDragging = false
+                        if (open) {
+                            overlay = Overlay.Drawer
+                            scope.launch { drawerP.animateTo(1f, Motion.lively(Motion.overlay)) }
+                        } else scope.launch { drawerP.animateTo(0f, Motion.lively(Motion.overlay)) }
+                    }
                     detectVerticalDragGestures(
-                        onDragStart = { total = 0f },
+                        onDragStart = { total = 0f; vt.resetTracking() },
                         onDragEnd = {
-                            if (gesturesOn) {
+                            if (drawerDragging) {
+                                val v = vt.calculateVelocity().y
+                                settle(v < -900f || (drawerP.value > 0.35f && v < 900f))
+                            } else if (gesturesOn) {
                                 if (total > 140) swipeDownA() else if (total < -140) swipeUpA()
                             }
+                        },
+                        onDragCancel = { if (drawerDragging) settle(false) }
+                    ) { change, dy ->
+                        total += dy
+                        if (!gesturesOn && !drawerDragging) return@detectVerticalDragGestures
+                        change.consume()
+                        vt.addPosition(change.uptimeMillis, change.position)
+                        // swipe πάνω: το συρτάρι εμφανίζεται όσο ανεβαίνει το δάχτυλο και κρύβεται αν το κατεβάσεις
+                        if (prefs.swipeUp == GestureAction.Drawer && (drawerDragging || total < -12f)) {
+                            drawerDragging = true
+                            val p = (-total / (rootSize.height * 0.42f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                            scope.launch { drawerP.snapTo(p) }
                         }
-                    ) { change, dy -> total += dy; if (gesturesOn) change.consume() }
+                    }
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
@@ -521,14 +559,19 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             }
         }
 
-        androidx.compose.animation.AnimatedVisibility(overlay != Overlay.None, enter = fadeIn(tween(dur(220))), exit = fadeOut(tween(dur(220)))) {
+        androidx.compose.animation.AnimatedVisibility(overlay != Overlay.None && overlay != Overlay.Drawer, enter = fadeIn(tween(dur(220))), exit = fadeOut(tween(dur(220)))) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.22f)))
         }
 
-        AnimatedVisibility(
-            overlay == Overlay.Drawer,
-            enter = slideInVertically(Motion.lively(Motion.overlay)) { it / 3 } + fadeIn(tween(dur(220))) + scaleIn(Motion.lively(Motion.overlay), 0.96f, TransformOrigin(0.5f, 1f)),
-            exit = slideOutVertically(Motion.snappy(Motion.overlay)) { it / 3 } + fadeOut(tween(dur(180)))
+        if (overlay == Overlay.Drawer || drawerDragging || drawerShown) Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                val p = drawerP.value
+                alpha = p
+                translationY = (1f - p) * size.height * 0.14f
+                val sc = 0.95f + 0.05f * p
+                scaleX = sc; scaleY = sc
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            }
         ) {
             AppDrawer(
                 apps, prefs, drawerSeed, drawerSearchMode, byKey,
