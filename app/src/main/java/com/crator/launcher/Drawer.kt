@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -296,7 +297,8 @@ fun AppDrawer(
                     span = { _, e -> androidx.compose.foundation.lazy.grid.GridItemSpan(if (e is DrawerEntry.P) maxLineSpan else 1) }
                 ) { i, e ->
                     if (e is DrawerEntry.P) {
-                        InlineFolder(e.folder, byKey, prefs, openId == e.id, labelColor,
+                        val fi = gridList.indexOfFirst { it is DrawerEntry.F && it.id == e.id }
+                        InlineFolder(e.folder, byKey, prefs, openId == e.id, labelColor, col = if (fi >= 0) fi % prefs.drawerCols else -1,
                             onLaunch = { a, b -> onLaunch(a, b) }, onLong = onLong,
                             modifier = Modifier.animateItemPlacement())
                         return@itemsIndexed
@@ -309,7 +311,38 @@ fun AppDrawer(
                             .graphicsLayer { alpha = if (dragKey == e.key) 0.25f else 1f },
                         enabled = i < 28 && System.currentTimeMillis() - openedAt < 700
                     ) {
-                        Box(contentAlignment = Alignment.TopCenter) {
+                        // ανοιχτός φάκελος: το εικονίδιο «δένει» με το τετράγωνο από κάτω (καρτέλα με ανάποδες καμπύλες)
+                        val tab by androidx.compose.animation.core.animateFloatAsState(
+                            if (e is DrawerEntry.F && openId == e.id) 1f else 0f, Motion.lively(Motion.sheet), label = "tab")
+                        val col = i % prefs.drawerCols
+                        val lastCol = col == prefs.drawerCols - 1
+                        Box(
+                            Modifier.fillMaxWidth().drawBehind {
+                                if (tab <= 0.01f) return@drawBehind
+                                val c = Color.White.copy(alpha = 0.09f * tab)
+                                val inset = 2.dp.toPx()
+                                val l = inset; val r = size.width - inset
+                                val top = 0f; val bottom = size.height + 2.dp.toPx() + 0.5f
+                                val rad = 22.dp.toPx()
+                                val p = androidx.compose.ui.graphics.Path().apply {
+                                    moveTo(l, bottom); lineTo(l, top + rad)
+                                    quadraticBezierTo(l, top, l + rad, top)
+                                    lineTo(r - rad, top); quadraticBezierTo(r, top, r, top + rad)
+                                    lineTo(r, bottom); close()
+                                }
+                                drawPath(p, c)
+                                val f = 14.dp.toPx(); val k = 0.552f * f
+                                if (col != 0) drawPath(androidx.compose.ui.graphics.Path().apply {
+                                    moveTo(l, bottom); lineTo(l, bottom - f)
+                                    cubicTo(l, bottom - f + k, l - f + k, bottom, l - f, bottom); close()
+                                }, c)
+                                if (!lastCol) drawPath(androidx.compose.ui.graphics.Path().apply {
+                                    moveTo(r, bottom); lineTo(r, bottom - f)
+                                    cubicTo(r, bottom - f + k, r + f - k, bottom, r + f, bottom); close()
+                                }, c)
+                            },
+                            contentAlignment = Alignment.TopCenter
+                        ) {
                             if (hover > 0.01f) Box(
                                 Modifier.padding(top = 2.dp).size(prefs.drawerIconSize.dp * 1.4f)
                                     .graphicsLayer { val sc = 0.6f + 0.4f * hover; scaleX = sc; scaleY = sc; alpha = hover; translationY = -prefs.iconSize.dp.toPx() * 0.12f }
@@ -323,7 +356,8 @@ fun AppDrawer(
                                         val on by androidx.compose.animation.core.animateFloatAsState(if (openId == e.id) 1f else 0f, Motion.lively(Motion.sheet), label = "fo")
                                         FolderCell(e.folder, byKey, prefs, prefs.drawerIconSize.dp, true,
                                             { openId = if (openId == e.id) null else e.id }, { onFolderLong(e.id) }, pop = pop,
-                                            modifier = Modifier.graphicsLayer { val sc = 1f + 0.06f * on; scaleX = sc; scaleY = sc })
+                                            modifier = Modifier.graphicsLayer { val sc = 1f + 0.04f * on; scaleX = sc; scaleY = sc },
+                                            labelAlpha = { 1f - on })
                                     }
                                     else -> {}
                                 }
@@ -376,6 +410,7 @@ private fun InlineFolder(
     prefs: Prefs,
     open: Boolean,
     labelColor: Color,
+    col: Int = -1,
     onLaunch: (AppInfo, android.graphics.Rect?) -> Unit,
     onLong: (AppInfo) -> Unit,
     modifier: Modifier = Modifier
@@ -392,12 +427,17 @@ private fun InlineFolder(
     ) {
         val apps = f.apps.mapNotNull { byKey[it] }
         val cols = prefs.drawerCols.coerceAtLeast(1)
+        // ίδιο χρώμα με την καρτέλα του εικονιδίου, χωρίς περίγραμμα, ώστε να φαίνονται ένα κομμάτι
+        val last = col == prefs.drawerCols - 1
+        val shape = RoundedCornerShape(
+            topStart = if (col == 0) 0.dp else 24.dp, topEnd = if (last) 0.dp else 24.dp,
+            bottomStart = 24.dp, bottomEnd = 24.dp
+        )
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 6.dp)
-                .clip(RoundedCornerShape(24.dp))
+            Modifier.fillMaxWidth().padding(start = 2.dp, end = 2.dp, bottom = 6.dp)
+                .clip(shape)
                 .background(Color.White.copy(alpha = 0.09f))
-                .border(0.6.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                .padding(vertical = 8.dp)
+                .padding(vertical = 10.dp)
         ) {
             if (apps.isEmpty()) Text("Άδειος φάκελος", color = Smoke.mist, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
             apps.chunked(cols).forEach { row ->

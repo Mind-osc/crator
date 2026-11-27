@@ -98,7 +98,8 @@ fun FolderCell(
     onClick: (Rect?) -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    pop: Boolean = false
+    pop: Boolean = false,
+    labelAlpha: () -> Float = { 1f }
 ) {
     val haptic = LocalHapticFeedback.current
     val bounds = remember { arrayOfNulls<Rect>(1) }
@@ -120,7 +121,8 @@ fun FolderCell(
         }
         if (showLabel) {
             Spacer(Modifier.height(5.dp))
-            Text(f.name, style = labelStyle(prefs), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
+            Text(f.name, style = labelStyle(prefs), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().graphicsLayer { alpha = labelAlpha() })
         }
     }
 }
