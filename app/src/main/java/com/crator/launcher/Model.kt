@@ -33,7 +33,9 @@ object Item {
     }
 }
 
-val Prefs.gridRows: Int get() = rows * fine.coerceIn(1, 4)
+// με ενδιάμεσες γραμμές προστίθενται (fine-1) λεπτές γραμμές στο κάτω μέρος,
+// ώστε και η τελευταία σειρά να έχει ενδιάμεσες θέσεις από κάτω της
+val Prefs.gridRows: Int get() = fine.coerceIn(1, 4).let { f -> rows * f + (f - 1) }
 
 /** Μέγεθος στοιχείου σε κελιά του (λεπτού) πλέγματος */
 fun Prefs.spanOf(item: String): Pair<Int, Int> =
