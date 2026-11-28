@@ -99,6 +99,32 @@ object Actions {
         start(ctx, Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.component.packageName}")))
     }
 
+    /**
+     * Η αριθμομηχανή της Samsung δεν δηλώνει CATEGORY_APP_CALCULATOR, οπότε ο «selector» αποτύγχανε σιωπηλά.
+     * Δοκιμάζουμε: selector → γνωστά πακέτα → οποιαδήποτε εφαρμογή με «calc» στο όνομα πακέτου.
+     */
+    fun calculator(ctx: Context) {
+        if (start(ctx, Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_CALCULATOR))) return
+        val pm = ctx.packageManager
+        val known = listOf("com.sec.android.app.popupcalculator", "com.google.android.calculator", "com.android.calculator2", "com.miui.calculator", "com.oneplus.calculator")
+        for (p in known) pm.getLaunchIntentForPackage(p)?.let { if (start(ctx, it)) return }
+        val la = ctx.getSystemService(android.content.pm.LauncherApps::class.java)
+        la?.getActivityList(null, android.os.Process.myUserHandle())
+            ?.firstOrNull { it.componentName.packageName.contains("calc", ignoreCase = true) }
+            ?.let { if (start(ctx, Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(it.componentName))) return }
+        android.widget.Toast.makeText(ctx, "Δεν βρέθηκε αριθμομηχανή", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Το «Νυχτερινό φως» του AOSP στη Samsung λέγεται «Άνεση ματιών» και δεν έχει δημόσιο intent:
+     * το ACTION_NIGHT_DISPLAY_SETTINGS καταλήγει στην αρχική των ρυθμίσεων. Εκεί ανοίγουμε την «Οθόνη», όπου βρίσκεται.
+     */
+    fun nightLight(ctx: Context) {
+        val samsung = android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+        if (samsung) { settings(ctx, Settings.ACTION_DISPLAY_SETTINGS); return }
+        if (!start(ctx, Intent(Settings.ACTION_NIGHT_DISPLAY_SETTINGS))) settings(ctx, Settings.ACTION_DISPLAY_SETTINGS)
+    }
+
     fun openUrl(ctx: Context, url: String) {
         start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
