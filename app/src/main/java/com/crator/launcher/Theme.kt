@@ -55,6 +55,11 @@ object Smoke {
     val danger = Color(0xFFE8606A)
 }
 
+val Orbitron = FontFamily(
+    Font(R.font.orbitron_medium, FontWeight.Medium),
+    Font(R.font.orbitron_bold, FontWeight.Bold)
+)
+
 val Manrope = FontFamily(
     Font(R.font.manrope_extralight, FontWeight.ExtraLight),
     Font(R.font.manrope_extralight, FontWeight.Thin),

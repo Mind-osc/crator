@@ -247,6 +247,9 @@ fun Dashboard(
     fun unit(id: String, mod: Modifier) {
         if (isButton(id)) { button(id, mod); return }
         when (id) {
+            "clock" -> DashClock(prefs.dashClockDark, mod.clickable(enabled = !editMode) {
+                Actions.start(ctx, Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            })
             // Γλυκόζη (Live Activity): τιμή πάνω αριστερά, μπάρες με χρώμα ανάλογα με το ύψος, άξονας χρόνου
             "cpu" -> LiveCard(mod) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
@@ -364,7 +367,11 @@ fun Dashboard(
 
         // Γραμμές: κάρτες ανά 2, κουμπιά ανά 4, με τη σειρά που τα έχεις βάλει
         val rows = mutableListOf<MutableList<String>>()
+        val hasClock = "clock" in live
+        var clockLive by remember { mutableStateOf<Float?>(null) } // dp όσο αλλάζεις μέγεθος
+        val clockDp = clockLive ?: prefs.dashClockH.toFloat()
         for (id in live) {
+            if (id == "clock") continue
             val cap = if (isButton(id)) 5 else 2
             val last = rows.lastOrNull()
             if (last != null && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
@@ -386,19 +393,29 @@ fun Dashboard(
             val fullW = gridSize.width; val fullH = gridSize.height
             // ο πίνακας: ίδιο κενό γύρω-γύρω (πάνω = πλάγια)
             val w = fullW - padPx * 2; val h = fullH - padPx * 2
-            if (w > 0 && h > 0 && rows.isNotEmpty()) {
+            if (w > 0 && h > 0 && (rows.isNotEmpty() || hasClock)) {
                 // σταθερά ύψη (κάρτα ~100dp, κουμπιά ~70dp)· αν δεν χωράνε, μικραίνουν αναλογικά
-                val want = rows.map { if (isButton(it[0])) btnRowPx else cardRowPx }
-                val total = want.sum() + gapPx * (rows.size - 1)
-                val k = if (total > h) (h - gapPx * (rows.size - 1)).toFloat() / want.sum() else 1f
-                val used = (want.sum() * k).toInt() + gapPx * (rows.size - 1)
+                // το ρολόι στέκεται πάνω από τον πίνακα, χωρίς φόντο (φαίνεται η ταπετσαρία)
+                val clockPx = if (hasClock) (clockDp * dDash).toInt() else 0
+                val want = (if (hasClock) listOf(clockPx) else emptyList()) + rows.map { if (isButton(it[0])) btnRowPx else cardRowPx }
+                val gaps = gapPx * (want.size - 1).coerceAtLeast(0)
+                val total = want.sum() + gaps
+                val k = if (total > h) (h - gaps).toFloat() / want.sum() else 1f
+                val used = (want.sum() * k).toInt() + gaps
                 val free = (h - used).coerceAtLeast(0)
                 val lift = liftPx.toInt().coerceIn(0, free)
                 var y = padPx + free - lift
-                board = androidx.compose.ui.unit.IntRect(0, y - padPx, fullW, fullH - lift)
+                if (hasClock) {
+                    val ch = (clockPx * k).toInt()
+                    m["clock"] = androidx.compose.ui.unit.IntRect(padPx, y, padPx + w, y + ch)
+                    y += ch + gapPx
+                }
+                board = if (rows.isEmpty()) androidx.compose.ui.unit.IntRect.Zero
+                    else androidx.compose.ui.unit.IntRect(0, y - padPx, fullW, fullH - lift)
                 val btnW = (w - pillPadPx * 2) / 5
+                val rowWant = if (hasClock) want.drop(1) else want
                 rows.forEachIndexed { r, row ->
-                    val rh = (want[r] * k).toInt()
+                    val rh = (rowWant[r] * k).toInt()
                     if (isButton(row[0])) {
                         // κάψουλα όσο χρειάζεται, στο κέντρο· στενεύει όταν βγάζεις κουμπί
                         val pillW = row.size * btnW + pillPadPx * 2
@@ -479,7 +496,7 @@ fun Dashboard(
                             if (now - lastSwap < 140) return@drag
                             // στόχος: το κομμάτι κάτω από το κέντρο, μόνο στο εσωτερικό 70% (όχι τρεμόπαιγμα στα όρια)
                             val target = rectsNow.entries.firstOrNull { (k, r) ->
-                                if (k == id) false else {
+                                if (k == id || k == "clock" || id == "clock") false else {
                                     val mx = r.width * 0.15f; val my = r.height * 0.15f
                                     center.x > r.left + mx && center.x < r.right - mx && center.y > r.top + my && center.y < r.bottom - my
                                 }
@@ -561,6 +578,42 @@ fun Dashboard(
                             }
                     ) {
                         unit(id, Modifier.fillMaxSize())
+                        if (editMode && id == "clock") {
+                            // μέγεθος: σύρε τη λαβή πάνω/κάτω (σαν τα widgets)
+                            Box(
+                                Modifier.align(Alignment.BottomCenter).offset(y = 14.dp).size(96.dp, 32.dp)
+                                    .pointerInput(Unit) {
+                                        var startDp = 0f
+                                        var acc = 0f
+                                        detectVerticalDragGestures(
+                                            onDragStart = { startDp = prefs.dashClockH.toFloat(); acc = 0f; clockLive = startDp },
+                                            onDragEnd = { prefs.dashClockH = (clockLive ?: startDp).toInt(); clockLive = null },
+                                            onDragCancel = { clockLive = null }
+                                        ) { c, dy ->
+                                            c.consume(); acc += dy
+                                            clockLive = (startDp + acc / density).coerceIn(56f, 320f)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(Modifier.size(48.dp, 6.dp).clip(RoundedCornerShape(3.dp)).background(accent))
+                            }
+                            // μαύρα / λευκά γράμματα
+                            Box(
+                                Modifier.align(Alignment.TopStart).offset((-14).dp, (-14).dp).size(44.dp)
+                                    .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { prefs.dashClockDark = !prefs.dashClockDark },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    Modifier.size(26.dp).clip(CircleShape)
+                                        .background(if (prefs.dashClockDark) Color.White else Color.Black)
+                                        .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("A", color = if (prefs.dashClockDark) Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                         if (editMode) {
                             val xs = if (isButton(id)) 22.dp else 26.dp
                             // ορατό 22–26dp, αλλά περιοχή αφής 44dp

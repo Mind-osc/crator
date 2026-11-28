@@ -227,7 +227,7 @@ private val DEFAULT_SC = DASH_CATALOG.take(16).map { "sc:${it.id}" }
 
 val DASH_INFO = listOf(
     "cpu" to "CPU", "ram" to "RAM", "storage" to "Χώρος", "net" to "Δίκτυο",
-    "battery" to "Μπαταρία", "thermal" to "Θερμικά"
+    "battery" to "Μπαταρία", "thermal" to "Θερμικά", "clock" to "Ρολόι"
 )
 val DASH_DEFAULT_ITEMS = listOf("cpu", "net", "battery", "thermal") + DEFAULT_SC + listOf("ram", "storage")
 
