@@ -233,8 +233,16 @@ fun SystemWidget(id: Int, widgets: WidgetController, prefs: Prefs, onLongPress: 
     val lp by rememberUpdatedState(onLongPress)
     val shape = RoundedCornerShape(prefs.widgetCorner.dp)
     if (info == null) {
-        Box(modifier.padding(prefs.widgetPadding.dp).fillMaxSize().clip(shape).background(Color.White.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
-            Text("Widget μη διαθέσιμο", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+        // π.χ. μετά από επανεγκατάσταση: το παλιό widget δεν υπάρχει πια — παρατεταμένο πάτημα για αφαίρεση
+        Box(
+            modifier.padding(prefs.widgetPadding.dp).fillMaxSize().clip(shape).background(Color.White.copy(alpha = 0.08f))
+                .pointerInput(Unit) { detectTapGestures(onLongPress = { lp() }) },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "Widget μη διαθέσιμο\nΚράτα πατημένο για αφαίρεση", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(6.dp)
+            )
         }
         return
     }

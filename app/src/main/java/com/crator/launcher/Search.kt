@@ -2,6 +2,14 @@
 
 package com.crator.launcher
 
+import androidx.compose.foundation.border
+
+import androidx.compose.animation.animateContentSize
+
+import androidx.compose.foundation.gestures.detectTapGestures
+
+import androidx.compose.ui.input.pointer.pointerInput
+
 import android.content.Intent
 import android.graphics.Rect
 import android.net.Uri
@@ -142,17 +150,25 @@ fun SearchScreen(
         }
     }
 
+    // Διάφανο φόντο: φαίνεται η ταπετσαρία. Τα αποτελέσματα είναι σε κάρτα που ψηλώνει όσο βρίσκει.
+    // Πάτημα στο κενό κλείνει.
     Column(
         Modifier.fillMaxSize()
-            .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
-            .statusBarsPadding().navigationBarsPadding().imePadding()
+            .clickable(remember { MutableInteractionSource() }, null) { onClose() }
+            .statusBarsPadding().navigationBarsPadding().imePadding(),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom
     ) {
-        // Αποτελέσματα πάνω από τη μπάρα, κολλημένα κάτω (κοντά στο δάχτυλο). Πάτημα στο κενό κλείνει.
-        if (q.isBlank()) Box(Modifier.weight(1f).fillMaxWidth().clickable(MutableInteractionSource(), null) { onClose() })
-        else LazyColumn(
-            Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Bottom,
-            contentPadding = PaddingValues(12.dp, 12.dp, 12.dp, 4.dp)
+        if (q.isNotBlank()) LazyColumn(
+            Modifier
+                .weight(1f, fill = false)
+                .padding(horizontal = 14.dp)
+                .fillMaxWidth()
+                .animateContentSize(Motion.lively(Motion.sheet))
+                .clip(RoundedCornerShape(28.dp))
+                .background(Color(prefs.drawerColor).copy(alpha = prefs.drawerOpacity / 100f))
+                .border(0.6.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(28.dp))
+                .pointerInput(Unit) { detectTapGestures { } },
+            contentPadding = PaddingValues(8.dp, 6.dp, 8.dp, 8.dp)
         ) {
             if (url != null) item("url") {
                 ActionRow(Icons.Rounded.Public, url.removePrefix("https://").removePrefix("http://"), "Άνοιγμα διεύθυνσης", true) { open(url) }

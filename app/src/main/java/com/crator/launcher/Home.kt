@@ -237,7 +237,10 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     }
     LaunchedEffect(overlay) {
         if (overlay != Overlay.Drawer) { drawerSearchMode = false; drawerSeed = "" }
-        activity.setBlurBehind(if (overlay == Overlay.Drawer) prefs.blurStrength * 3 else 0)
+    }
+    // Στην αναζήτηση φαίνεται καθαρά η ταπετσαρία: χωρίς θόλωμα πίσω από το παράθυρο
+    LaunchedEffect(overlay, drawerSearchMode) {
+        activity.setBlurBehind(if (overlay == Overlay.Drawer && !drawerSearchMode) prefs.blurStrength * 3 else 0)
     }
 
     fun openSearch(seed: String = "") {
@@ -632,7 +635,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                 onFolderLong = { id -> popupAnchor = drag.lastPointer; folderSheet = id },
                 onClose = { overlay = Overlay.None },
                 drag = drag,
-                onPull = { px -> drawerTrack(1f - px / (travel() * 0.5f)) }, // κλείσιμο με μισή κίνηση
+                onPull = { px -> drawerTrack(1f - px / (travel() * 0.35f)) }, // κλείσιμο με μικρή κίνηση του δαχτύλου
                 onPullEnd = { v -> drawerRelease(v, closing = true) }
             )
         }

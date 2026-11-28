@@ -185,7 +185,7 @@ fun AppDrawer(
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.Drag && available.y > 0) {
                     acc += available.y
-                    if (acc > 260f) { acc = 0f; closeDrawer() }
+                    if (acc > 182f) { acc = 0f; closeDrawer() }
                 } else if (available.y < 0) acc = 0f
                 return Offset.Zero
             }
@@ -261,7 +261,7 @@ fun AppDrawer(
                         val vel = vt.calculateVelocity().y
                         val endCb = pullEndCb
                         if (endCb != null) endCb(vel)
-                        else if (pull.value > size.height * 0.22f || vel > 1800f) closeDrawer()
+                        else if (pull.value > size.height * 0.154f || vel > 1800f) closeDrawer()
                         else scope.launch { pull.animateTo(0f, Motion.lively(Motion.overlay)) }
                     }
                 }
@@ -276,7 +276,7 @@ fun AppDrawer(
         Box(
             Modifier.fillMaxWidth().height(26.dp).pointerInput(Unit) {
                 var t = 0f
-                detectVerticalDragGestures(onDragStart = { t = 0f }, onDragEnd = { if (t > 80) closeDrawer() }) { c, dy -> t += dy; c.consume() }
+                detectVerticalDragGestures(onDragStart = { t = 0f }, onDragEnd = { if (t > 56) closeDrawer() }) { c, dy -> t += dy; c.consume() }
             },
             contentAlignment = Alignment.Center
         ) { Box(Modifier.size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.35f))) }
