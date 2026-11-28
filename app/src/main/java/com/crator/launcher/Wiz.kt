@@ -3,7 +3,9 @@ package com.crator.launcher
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.view.HapticFeedbackConstants
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -175,7 +177,8 @@ object Wiz {
 
 /** Μαύρο widget WiZ: Όλα ON / Όλα OFF / Φωτεινότερο / Χαμηλότερο */
 @Composable
-fun WizWidget(modifier: Modifier, press: Modifier, corner: Int) {
+@OptIn(ExperimentalFoundationApi::class)
+fun WizWidget(modifier: Modifier, press: Modifier, corner: Int, onLong: () -> Unit) {
     val ctx = LocalContext.current
     val view = LocalView.current
     val scope = rememberCoroutineScope()
@@ -213,7 +216,7 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int) {
     ) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                .clickable { act { Wiz.discover(ctx); Wiz.states(ctx) } }
+                .combinedClickable(onLongClick = onLong) { act { Wiz.discover(ctx); Wiz.states(ctx) } }
                 .padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -228,18 +231,19 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int) {
         }
         Spacer(Modifier.height(6.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            WizButton("All ON", Icons.Rounded.PowerSettingsNew, glow = list != null && anyOn) { act { Wiz.power(ctx, true) } }
-            WizButton("All OFF", Icons.Rounded.PowerSettingsNew, glow = list != null && list.isNotEmpty() && !anyOn) { act { Wiz.power(ctx, false) } }
-            WizButton("Brighten", Icons.Rounded.BrightnessHigh, glow = false) { act { Wiz.step(ctx, true) } }
-            WizButton("Dim down", Icons.Rounded.BrightnessLow, glow = false) { act { Wiz.step(ctx, false) } }
+            WizButton("All ON", onLong, Icons.Rounded.PowerSettingsNew, glow = list != null && anyOn) { act { Wiz.power(ctx, true) } }
+            WizButton("All OFF", onLong, Icons.Rounded.PowerSettingsNew, glow = list != null && list.isNotEmpty() && !anyOn) { act { Wiz.power(ctx, false) } }
+            WizButton("Brighten", onLong, Icons.Rounded.BrightnessHigh, glow = false) { act { Wiz.step(ctx, true) } }
+            WizButton("Dim down", onLong, Icons.Rounded.BrightnessLow, glow = false) { act { Wiz.step(ctx, false) } }
         }
     }
 }
 
 @Composable
-private fun WizButton(label: String, icon: ImageVector, glow: Boolean, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun WizButton(label: String, onLong: () -> Unit, icon: ImageVector, glow: Boolean, onClick: () -> Unit) {
     Column(
-        Modifier.clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(horizontal = 6.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(16.dp)).combinedClickable(onLongClick = onLong, onClick = onClick).padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {

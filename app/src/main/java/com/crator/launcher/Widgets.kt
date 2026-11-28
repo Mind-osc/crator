@@ -331,7 +331,7 @@ fun CratorWidget(
                 items.forEach { (l, ic, fn) -> RoundTile(l, ic, accent, fn) }
             }
         }
-        "wiz" -> WizWidget(card, press, prefs.widgetCorner)
+        "wiz" -> WizWidget(card, press, prefs.widgetCorner, onLongPress)
         else -> { // settings
             val items = listOf<Triple<String, ImageVector, String?>>(
                 Triple("Εικονίδια", Icons.Rounded.Palette, "icons"),
@@ -407,7 +407,9 @@ fun WidgetPicker(widgets: WidgetController, prefs: Prefs, filterPkg: String?, pa
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(CRATOR_WIDGETS) { d ->
                             WidgetCard(d.name, "${d.sx}×${d.sy}", null, d.icon) {
-                                if (!prefs.placeOnHome(Item.crator(d.type, d.sx, d.sy), page))
+                                // τα ύψη των widget είναι σε κανονικές σειρές· με ενδιάμεσες γραμμές πολλαπλασιάζονται
+                                val sy = (d.sy * prefs.fine.coerceIn(1, 4)).coerceIn(1, prefs.gridRows)
+                                if (!prefs.placeOnHome(Item.crator(d.type, d.sx, sy), page))
                                     Toast.makeText(ctx, "Δεν υπάρχει χώρος", Toast.LENGTH_SHORT).show()
                                 onClose()
                             }
