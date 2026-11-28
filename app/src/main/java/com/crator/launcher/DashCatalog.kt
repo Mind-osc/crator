@@ -227,7 +227,12 @@ private val DEFAULT_SC = DASH_CATALOG.take(16).map { "sc:${it.id}" }
 
 val DASH_INFO = listOf(
     "cpu" to "CPU", "ram" to "RAM", "storage" to "Χώρος", "net" to "Δίκτυο",
-    "battery" to "Μπαταρία", "thermal" to "Θερμικά", "clock" to "Ρολόι"
+    "battery" to "Μπαταρία", "thermal" to "Θερμικά", "clock" to "Ρολόι",
+    "media" to "Μουσική (Spotify κ.ά.)", "weather" to "Καιρός · 5 ημέρες", "temp" to "Θερμοκρασία · 24ωρο",
+    "sun" to "Ήλιος · ανατολή/δύση", "air" to "Ποιότητα αέρα & UV", "moon" to "Φεγγάρι",
+    "calendar" to "Ημερολόγιο · επόμενα", "alarm" to "Επόμενο ξυπνητήρι", "date" to "Ημερομηνία",
+    "month" to "Μήνας", "progress" to "Πρόοδος ημέρας/έτους", "steps" to "Βήματα",
+    "screen" to "Χρόνος οθόνης", "data" to "Δεδομένα σήμερα", "note" to "Σημείωμα"
 )
 val DASH_DEFAULT_ITEMS = listOf("cpu", "net", "battery", "thermal") + DEFAULT_SC + listOf("ram", "storage")
 

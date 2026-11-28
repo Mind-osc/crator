@@ -498,7 +498,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    val p = drawerP.value.coerceIn(0f, 1f)
+                    // στην αναζήτηση η αρχική μένει όπως είναι (όχι σκοτείνιασμα / «λάμψη» όταν κρύβεται το πληκτρολόγιο)
+                    val p = if (drawerSearchMode) 0f else drawerP.value.coerceIn(0f, 1f)
                     val sc = recede * (1f - 0.04f * p)
                     scaleX = sc; scaleY = sc
                     alpha = 1f - 0.92f * p

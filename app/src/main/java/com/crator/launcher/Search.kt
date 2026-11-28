@@ -125,6 +125,14 @@ fun SearchScreen(
     var q by remember { mutableStateOf(seed) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // Κρύβεις το πληκτρολόγιο χωρίς να έχεις γράψει τίποτα → η αναζήτηση κλείνει (όχι άδεια οθόνη με μπάρα κάτω)
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    val imeOpen = androidx.compose.foundation.layout.WindowInsets.isImeVisible
+    var imeSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(imeOpen) {
+        if (imeOpen) imeSeen = true
+        else if (imeSeen && q.isBlank()) onClose()
+    }
 
     val nq = q.norm().trim()
     val url = remember(q) { asUrl(q) }

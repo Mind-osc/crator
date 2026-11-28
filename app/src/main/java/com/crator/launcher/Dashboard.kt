@@ -168,6 +168,32 @@ fun Dashboard(
         DashHooks.openSearch = onSearch
     }
 
+    // ----- Live widgets: άδειες, πόλη καιρού, σημείωμα -----
+    var cityDialog by remember { mutableStateOf(false) }
+    var noteDialog by remember { mutableStateOf(false) }
+    val permLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { LiveScope.recheckAccess() }
+    // επιστροφή από τις ρυθμίσεις (π.χ. «Πρόσβαση χρήσης») → οι πηγές ξαναελέγχουν
+    LaunchedEffect(active) { if (active) LiveScope.recheckAccess() }
+    val onAccess: (Access) -> Unit = { a ->
+        when (a) {
+            Access.City -> cityDialog = true
+            Access.Calendar -> permLauncher.launch(android.Manifest.permission.READ_CALENDAR)
+            Access.Activity -> permLauncher.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
+            Access.Usage -> Actions.start(ctx, Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            Access.Notifications -> {
+                val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, android.content.ComponentName(ctx, BadgeService::class.java).flattenToString())
+                if (!Actions.start(ctx, detail)) Actions.start(ctx, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+        }
+    }
+    if (cityDialog) TextDialog("Πόλη για τον καιρό", prefs.weatherCity, "π.χ. Αθήνα", singleLine = true,
+        onDone = { prefs.weatherCity = it.trim(); cityDialog = false }, onDismiss = { cityDialog = false })
+    if (noteDialog) TextDialog("Σημείωμα", prefs.dashNote, "Γράψε κάτι…", singleLine = false,
+        onDone = { prefs.dashNote = it; noteDialog = false }, onDismiss = { noteDialog = false })
+
     // Ξεκινάει μόνο όταν η σελίδα είναι ενεργή, σταματάει αμέσως μόλις φύγεις
     LaunchedEffect(active, prefs.dashRefresh, prefs.dashHistory) {
         if (!active) return@LaunchedEffect
@@ -246,7 +272,23 @@ fun Dashboard(
     @Composable
     fun unit(id: String, mod: Modifier) {
         if (isButton(id)) { button(id, mod); return }
+        val canTap = !editMode
         when (id) {
+            "media" -> MediaCard(mod, canTap, onAccess)
+            "weather" -> WeatherCard(prefs.weatherCity, mod, canTap, onAccess)
+            "temp" -> TempCard(prefs.weatherCity, mod, canTap, onAccess)
+            "sun" -> SunCard(prefs.weatherCity, mod, canTap, onAccess)
+            "air" -> AirCard(prefs.weatherCity, mod, canTap, onAccess)
+            "moon" -> MoonCard(mod)
+            "calendar" -> CalendarCard(mod, canTap, onAccess)
+            "alarm" -> AlarmCard(mod, canTap)
+            "date" -> DateCard(mod)
+            "month" -> MonthCard(mod)
+            "progress" -> ProgressCard(mod)
+            "steps" -> StepsCard(prefs.stepGoal, mod, canTap, onAccess)
+            "screen" -> ScreenTimeCard(mod, canTap, onAccess)
+            "data" -> DataCard(mod, canTap, onAccess)
+            "note" -> NoteCard(prefs.dashNote, mod, canTap) { noteDialog = true }
             "clock" -> DashClock(prefs.dashClockDark, mod.clickable(enabled = !editMode) {
                 Actions.start(ctx, Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             })
@@ -374,7 +416,10 @@ fun Dashboard(
             if (id == "clock") continue
             val cap = if (isButton(id)) 5 else 2
             val last = rows.lastOrNull()
-            if (last != null && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
+            // φαρδιές/μεγάλες κάρτες πιάνουν όλη τη γραμμή· οι μισές μπαίνουν ανά δύο
+            val half = isButton(id) || cardSpan(id) == CardSpan.Half
+            val lastHalf = last != null && (isButton(last[0]) || cardSpan(last[0]) == CardSpan.Half)
+            if (last != null && half && lastHalf && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
         }
 
         // Θέσεις (σε px μέσα στο πλέγμα): γραμμή καρτών = 1 μερίδα, γραμμή κουμπιών = 0,62
@@ -397,7 +442,7 @@ fun Dashboard(
                 // σταθερά ύψη (κάρτα ~100dp, κουμπιά ~70dp)· αν δεν χωράνε, μικραίνουν αναλογικά
                 // το ρολόι στέκεται πάνω από τον πίνακα, χωρίς φόντο (φαίνεται η ταπετσαρία)
                 val clockPx = if (hasClock) (clockDp * dDash).toInt() else 0
-                val want = (if (hasClock) listOf(clockPx) else emptyList()) + rows.map { if (isButton(it[0])) btnRowPx else cardRowPx }
+                val want = (if (hasClock) listOf(clockPx) else emptyList()) + rows.map { if (isButton(it[0])) btnRowPx else if (cardSpan(it[0]) == CardSpan.Big) cardRowPx * 2 + gapPx else cardRowPx }
                 val gaps = gapPx * (want.size - 1).coerceAtLeast(0)
                 val total = want.sum() + gaps
                 val k = if (total > h) (h - gaps).toFloat() / want.sum() else 1f
@@ -425,6 +470,8 @@ fun Dashboard(
                             val x = x0 + pillPadPx + c * btnW
                             m[id] = androidx.compose.ui.unit.IntRect(x, y, x + btnW, y + rh)
                         }
+                    } else if (cardSpan(row[0]) != CardSpan.Half) {
+                        m[row[0]] = androidx.compose.ui.unit.IntRect(padPx, y, padPx + w, y + rh)
                     } else {
                         val cw = (w - gapPx) / 2
                         row.forEachIndexed { c, id ->
@@ -750,4 +797,22 @@ private fun Bar(f: Float, color: Color) {
     Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(8.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.08f))) {
         Box(Modifier.fillMaxHeight().fillMaxWidth(f).clip(CircleShape).background(color))
     }
+}
+
+@Composable
+private fun TextDialog(title: String, initial: String, hint: String, singleLine: Boolean, onDone: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF111114),
+        title = { Text(title, color = Smoke.pearl) },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                text, { text = it }, placeholder = { Text(hint) }, singleLine = singleLine,
+                minLines = if (singleLine) 1 else 3, modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onDone(text) }) { Text("OK") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Άκυρο") } }
+    )
 }

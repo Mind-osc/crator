@@ -206,6 +206,10 @@ class Prefs(private val context: Context) {
     /** Ρολόι ταμπλό (Orbitron): ύψος σε dp και μαύρα/λευκά γράμματα */
     var dashClockH by int("dash_clock_h", 120)
     var dashClockDark by bool("dash_clock_dark", false)
+    /** Live widgets */
+    var weatherCity by str("weather_city", "")
+    var dashNote by str("dash_note", "")
+    var stepGoal by int("step_goal", 8000)
     var dashShortcuts by bool("dash_shortcuts", true)
     var dashCpu by bool("dash_cpu", true)
     var dashMem by bool("dash_mem", true)
