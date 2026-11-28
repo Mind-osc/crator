@@ -235,8 +235,10 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
             else drawerP.animateTo(0f, Motion.settle(Motion.overlay))
         }
     }
-    LaunchedEffect(overlay) {
-        if (overlay != Overlay.Drawer) { drawerSearchMode = false; drawerSeed = "" }
+    // Η αναζήτηση γίνεται ξανά «συρτάρι» μόνο αφού κρυφτεί εντελώς: αλλιώς στο κλείσιμο
+    // προλάβαινε να φανεί για μια στιγμή το σκούρο πάνελ του συρταριού (μαύρη λάμψη)
+    LaunchedEffect(overlay, drawerShown) {
+        if (overlay != Overlay.Drawer && !drawerShown) { drawerSearchMode = false; drawerSeed = "" }
     }
     // Στην αναζήτηση φαίνεται καθαρά η ταπετσαρία: χωρίς θόλωμα πίσω από το παράθυρο
     LaunchedEffect(overlay, drawerSearchMode) {
