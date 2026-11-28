@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dock
 import androidx.compose.material.icons.rounded.FlashlightOn
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Lightbulb
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
@@ -263,7 +264,8 @@ val CRATOR_WIDGETS = listOf(
     CratorWidgetDef("clock", "Ρολόι Crator", "Μεγάλο ρολόι με ημερομηνία", 4, 2, Icons.Rounded.AutoAwesome),
     CratorWidgetDef("claude", "Μπάρα αναζήτησης", "Αναζήτηση εφαρμογών από την αρχική", 4, 1, Icons.Rounded.Search),
     CratorWidgetDef("system", "Σύστημα mini", "RAM, χώρος, μπαταρία", 4, 1, Icons.Rounded.Palette),
-    CratorWidgetDef("toggles", "Συντομεύσεις", "Wi-Fi, Bluetooth, φακός, ρυθμίσεις, αρχεία", 4, 1, Icons.Rounded.Settings)
+    CratorWidgetDef("toggles", "Συντομεύσεις", "Wi-Fi, Bluetooth, φακός, ρυθμίσεις, αρχεία", 4, 1, Icons.Rounded.Settings),
+    CratorWidgetDef("wiz", "Λάμπες WiZ", "Μαύρο widget: όλα on/off, φωτεινότητα", 4, 2, Icons.Rounded.Lightbulb)
 )
 
 @Composable
@@ -329,6 +331,7 @@ fun CratorWidget(
                 items.forEach { (l, ic, fn) -> RoundTile(l, ic, accent, fn) }
             }
         }
+        "wiz" -> WizWidget(card, press, prefs.widgetCorner)
         else -> { // settings
             val items = listOf<Triple<String, ImageVector, String?>>(
                 Triple("Εικονίδια", Icons.Rounded.Palette, "icons"),
