@@ -289,6 +289,8 @@ fun Dashboard(
             "screen" -> ScreenTimeCard(mod, canTap, onAccess)
             "data" -> DataCard(mod, canTap, onAccess)
             "note" -> NoteCard(prefs.dashNote, mod, canTap) { noteDialog = true }
+            "volume" -> VolumeCard(mod, canTap)
+            "brightness" -> BrightnessCard(mod, canTap)
             "clock" -> DashClock(prefs.dashClockDark, mod.clickable(enabled = !editMode) {
                 Actions.start(ctx, Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             })

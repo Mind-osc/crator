@@ -217,7 +217,7 @@ fun AppCell(
                 }
             )
             BadgeView(
-                Badges.of(app.component.packageName), prefs, iconSize,
+                Badges.of(app.component.packageName, prefs), prefs, iconSize,
                 Modifier.align(Alignment.TopEnd).offset(x = 4.dp, y = (-4).dp)
             )
         }

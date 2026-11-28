@@ -174,6 +174,8 @@ class Prefs(private val context: Context) {
 
     // ---------- Badges ----------
     var badges by bool("badges", true)
+    /** Εφαρμογές χωρίς badge (επιλογή από το παρατεταμένο πάτημα) */
+    var noBadge by PrefState(loadList("no_badge").toSet()) { saveList("no_badge", it.toList()) }
     var badgeStyle by enm("badge_style", BadgeStyle.Count)
     var badgeColor by int("badge_color", 0xFFFF5A5F.toInt())
 

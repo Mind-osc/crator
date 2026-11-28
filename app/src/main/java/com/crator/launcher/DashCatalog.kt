@@ -232,7 +232,8 @@ val DASH_INFO = listOf(
     "sun" to "Ήλιος · ανατολή/δύση", "air" to "Ποιότητα αέρα & UV", "moon" to "Φεγγάρι",
     "calendar" to "Ημερολόγιο · επόμενα", "alarm" to "Επόμενο ξυπνητήρι", "date" to "Ημερομηνία",
     "month" to "Μήνας", "progress" to "Πρόοδος ημέρας/έτους", "steps" to "Βήματα",
-    "screen" to "Χρόνος οθόνης", "data" to "Δεδομένα σήμερα", "note" to "Σημείωμα"
+    "screen" to "Χρόνος οθόνης", "data" to "Δεδομένα σήμερα", "note" to "Σημείωμα",
+    "volume" to "Ήχος (χάρακας)", "brightness" to "Φωτισμός (χάρακας)"
 )
 val DASH_DEFAULT_ITEMS = listOf("cpu", "net", "battery", "thermal") + DEFAULT_SC + listOf("ram", "storage")
 

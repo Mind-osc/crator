@@ -579,3 +579,74 @@ object Moon {
         return (if (d < 0) d + SYNODIC else d).toInt()
     }
 }
+
+// ------------------------------------------------------------ Ήχος & φωτεινότητα
+
+/** Ένταση πολυμέσων 0..1· ενημερώνεται από το σύστημα (κουμπιά έντασης κ.λπ.) */
+object VolumeFeed {
+    private val shared = Shared<Context, Float> { ctx -> level(ctx) }
+    fun get(ctx: Context): SharedFlow<Float> = shared.get(ctx.applicationContext)
+
+    private fun read(ctx: Context): Float {
+        val am = ctx.getSystemService(android.media.AudioManager::class.java)
+        val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        return am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() / max
+    }
+
+    fun set(ctx: Context, f: Float) {
+        val am = ctx.getSystemService(android.media.AudioManager::class.java)
+        val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        runCatching { am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (f.coerceIn(0f, 1f) * max).roundToIntSafe(), 0) }
+    }
+
+    private fun level(ctx: Context): Flow<Float> = callbackFlow {
+        val main = Handler(Looper.getMainLooper())
+        val obs = object : ContentObserver(main) { override fun onChange(selfChange: Boolean) { trySend(read(ctx)) } }
+        ctx.contentResolver.registerContentObserver(android.provider.Settings.System.CONTENT_URI, true, obs)
+        val r = object : BroadcastReceiver() { override fun onReceive(c: Context?, i: Intent?) { trySend(read(ctx)) } }
+        ContextCompat.registerReceiver(ctx, r, IntentFilter("android.media.VOLUME_CHANGED_ACTION"), ContextCompat.RECEIVER_NOT_EXPORTED)
+        send(read(ctx))
+        awaitClose { ctx.contentResolver.unregisterContentObserver(obs); runCatching { ctx.unregisterReceiver(r) } }
+    }.conflate()
+}
+
+/**
+ * Φωτεινότητα 0..1 όπως τη δείχνει η μπάρα του συστήματος (περίπου: η τιμή είναι γραμμική,
+ * το μάτι όχι — τετραγωνική ρίζα). Η αλλαγή θέλει την ειδική άδεια «Τροποποίηση ρυθμίσεων συστήματος».
+ */
+object BrightnessFeed {
+    private val shared = Shared<Context, Float> { ctx -> level(ctx) }
+    fun get(ctx: Context): SharedFlow<Float> = shared.get(ctx.applicationContext)
+
+    private fun max(): Int {
+        val res = android.content.res.Resources.getSystem()
+        val id = res.getIdentifier("config_screenBrightnessSettingMaximum", "integer", "android")
+        return (if (id != 0) runCatching { res.getInteger(id) }.getOrNull() else null)?.takeIf { it > 0 } ?: 255
+    }
+
+    private fun read(ctx: Context): Float {
+        val v = android.provider.Settings.System.getInt(ctx.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, 128)
+        return kotlin.math.sqrt((v.toFloat() / max()).coerceIn(0f, 1f))
+    }
+
+    fun canWrite(ctx: Context) = android.provider.Settings.System.canWrite(ctx)
+
+    fun requestWrite(ctx: Context) {
+        Actions.start(ctx, Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName)))
+    }
+
+    fun set(ctx: Context, f: Float) {
+        if (!canWrite(ctx)) return
+        val v = (f.coerceIn(0.02f, 1f).let { it * it } * max()).roundToIntSafe().coerceAtLeast(1)
+        runCatching { android.provider.Settings.System.putInt(ctx.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, v) }
+    }
+
+    private fun level(ctx: Context): Flow<Float> = callbackFlow {
+        val obs = object : ContentObserver(Handler(Looper.getMainLooper())) { override fun onChange(selfChange: Boolean) { trySend(read(ctx)) } }
+        ctx.contentResolver.registerContentObserver(android.provider.Settings.System.getUriFor(android.provider.Settings.System.SCREEN_BRIGHTNESS), false, obs)
+        send(read(ctx))
+        awaitClose { ctx.contentResolver.unregisterContentObserver(obs) }
+    }.conflate()
+}
+
+private fun Float.roundToIntSafe(): Int = if (isNaN()) 0 else kotlin.math.round(this).toInt()

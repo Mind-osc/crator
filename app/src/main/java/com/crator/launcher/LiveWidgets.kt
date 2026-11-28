@@ -1,5 +1,13 @@
 package com.crator.launcher
 
+import androidx.compose.runtime.setValue
+
+import androidx.compose.foundation.gestures.awaitFirstDown
+
+import androidx.compose.foundation.gestures.awaitEachGesture
+
+import androidx.compose.ui.input.pointer.pointerInput
+
 import android.content.Context
 import android.content.Intent
 import android.provider.AlarmClock
@@ -666,5 +674,66 @@ fun NoteCard(text: String, mod: Modifier, enabled: Boolean, onEdit: () -> Unit) 
             color = if (text.isBlank()) dim else Smoke.pearl, fontSize = 13.sp, lineHeight = 16.sp,
             overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
         )
+    }
+}
+
+// =============================================================== Ήχος & φωτεινότητα (χάρακας σαν τα «Θερμικά», σύρεις για αλλαγή)
+
+internal object LevelPal {
+    val volume = listOf(Color(0xFF2EE88A), Color(0xFF13C26B))
+    val light = listOf(Color(0xFF7FDBFF), Color(0xFF3AA8FF))
+}
+
+@Composable
+fun VolumeCard(mod: Modifier, enabled: Boolean) {
+    val ctx = LocalContext.current
+    val level by VolumeFeed.get(ctx).collectAsStateWithLifecycle(0f)
+    LevelCard("Ήχος", level, LevelPal.volume, mod, enabled) { VolumeFeed.set(ctx, it) }
+}
+
+@Composable
+fun BrightnessCard(mod: Modifier, enabled: Boolean) {
+    val ctx = LocalContext.current
+    val level by BrightnessFeed.get(ctx).collectAsStateWithLifecycle(0f)
+    LevelCard("Φωτισμός", level, LevelPal.light, mod, enabled) { f ->
+        if (BrightnessFeed.canWrite(ctx)) BrightnessFeed.set(ctx, f)
+        else BrightnessFeed.requestWrite(ctx)
+    }
+}
+
+@Composable
+private fun LevelCard(label: String, level: Float, colors: List<Color>, mod: Modifier, enabled: Boolean, onSet: (Float) -> Unit) {
+    // όσο σέρνεις, δείχνει την τιμή του δαχτύλου (όχι να «πηδάει» με την καθυστέρηση του συστήματος)
+    var touch by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
+    val set by androidx.compose.runtime.rememberUpdatedState(onSet)
+    val f = (touch ?: level).coerceIn(0f, 1f)
+    LiveCard(mod) {
+        Axis("0", "50", "100")
+        EspressoRuler(
+            f, colors,
+            Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.dp)
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        down.consume()
+                        fun at(x: Float) = (x / size.width).coerceIn(0f, 1f)
+                        touch = at(down.position.x); set(at(down.position.x))
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!c.pressed) break
+                            c.consume()
+                            touch = at(c.position.x); set(at(c.position.x))
+                        }
+                        touch = null
+                    }
+                }
+        )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Text(label, color = colors[0], fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.weight(1f))
+            Text("${(f * 100).roundToInt()}%", color = colors[0], fontSize = 16.sp, fontWeight = FontWeight.Medium, style = tnum, maxLines = 1)
+        }
     }
 }

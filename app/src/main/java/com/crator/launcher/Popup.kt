@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.UnfoldMore
@@ -286,6 +288,13 @@ fun AppPopup(
                     add {
                         MenuLine(Icons.Rounded.Dock, Act.dock, if (inDock) "Αφαίρεση από dock" else "Στο dock") {
                             if (inDock) prefs.removeFromDock(app.key) else prefs.addToDock(app.key); onClose()
+                        }
+                    }
+                    add {
+                        val off = app.component.packageName in prefs.noBadge
+                        MenuLine(if (off) Icons.Rounded.Notifications else Icons.Rounded.NotificationsOff, Act.info, if (off) "Εμφάνιση badge" else "Χωρίς badge") {
+                            val p = app.component.packageName
+                            prefs.noBadge = if (off) prefs.noBadge - p else prefs.noBadge + p; onClose()
                         }
                     }
                     if (ctx.inFolder != null) add {

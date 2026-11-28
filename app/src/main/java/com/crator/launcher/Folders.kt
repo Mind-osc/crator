@@ -103,7 +103,7 @@ fun FolderCell(
 ) {
     val haptic = LocalHapticFeedback.current
     val bounds = remember { arrayOfNulls<Rect>(1) }
-    val badge = if (prefs.badges) f.apps.sumOf { k -> byKey[k]?.let { Badges.of(it.component.packageName) } ?: 0 } else 0
+    val badge = if (prefs.badges) f.apps.sumOf { k -> byKey[k]?.let { Badges.of(it.component.packageName, prefs) } ?: 0 } else 0
     Column(
         modifier.combinedClickable(
             interactionSource = remember { MutableInteractionSource() }, indication = null,
