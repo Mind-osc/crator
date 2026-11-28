@@ -271,7 +271,6 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int, onLong: () -> Un
                 WizButton("Dim down", onLong, Icons.Rounded.BrightnessLow, glow = false, btn, labels) { act { Wiz.step(ctx, false) } }
             }
         }
-        }
     }
 }
 
