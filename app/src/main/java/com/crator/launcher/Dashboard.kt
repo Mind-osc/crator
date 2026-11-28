@@ -577,7 +577,7 @@ fun Dashboard(
                 Box(
                     Modifier.offset { board.topLeft }
                         .size(with(d1) { board.width.toDp() }, with(d1) { board.height.toDp() })
-                        .shadow(24.dp, bs, ambientColor = Color.Black, spotColor = Color.Black)
+                        // χωρίς σκιά: κάτω από ημιδιάφανο φόντο η σκιά φαίνεται μέσα του σαν γκρίζες λωρίδες στα πλάγια
                         .clip(bs)
                         .background(Color(prefs.dashColor).copy(alpha = prefs.dashOpacity / 100f))
                         .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.045f), Color.Transparent)))

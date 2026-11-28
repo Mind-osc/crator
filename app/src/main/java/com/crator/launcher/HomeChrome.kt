@@ -153,6 +153,10 @@ fun Modifier.pageEffect(state: PagerState, page: Int, effect: PageEffect): Modif
     val a = abs(o).coerceIn(0f, 1f)
     val w = size.width
     cameraDistance = 14f * density
+    // Κατά τη μετάβαση η σελίδα «ψήνεται» πρώτα σε μία εικόνα και μετά παίρνει διαφάνεια/περιστροφή:
+    // αλλιώς κάθε κάρτα, σκιά και το ημιδιάφανο πάνελ σβήνουν ξεχωριστά και το χρώμα τρεμοπαίζει.
+    compositingStrategy = if (a > 0.001f && effect != PageEffect.Slide) androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+        else androidx.compose.ui.graphics.CompositingStrategy.Auto
     when (effect) {
         PageEffect.Slide -> {}
         PageEffect.Fade -> { translationX = o * w; alpha = 1f - a }
