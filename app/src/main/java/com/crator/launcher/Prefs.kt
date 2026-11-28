@@ -212,6 +212,9 @@ class Prefs(private val context: Context) {
     var weatherCity by str("weather_city", "")
     var dashNote by str("dash_note", "")
     var stepGoal by int("step_goal", 8000)
+    /** Μέγεθος ανά κάρτα ταμπλό (Half/Wide), από το κουμπί μεγέθους στο edit */
+    var dashSpans by PrefState(loadMap("dash_spans")) { saveMap("dash_spans", it) }
+    var dashSysMigrated by bool("dash_sys_migrated", false)
     var dashShortcuts by bool("dash_shortcuts", true)
     var dashCpu by bool("dash_cpu", true)
     var dashMem by bool("dash_mem", true)

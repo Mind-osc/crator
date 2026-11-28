@@ -90,6 +90,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -166,6 +167,20 @@ fun Dashboard(
     SideEffect {
         DashHooks.openCrator = onOpenSettings
         DashHooks.openSearch = onSearch
+    }
+
+    // Μία φορά: τα ξεχωριστά CPU/RAM/Χώρος/Δίκτυο γίνονται η ενιαία κάρτα «Σύστημα», στη θέση του πρώτου
+    LaunchedEffect(Unit) {
+        if (!prefs.dashSysMigrated) {
+            val cur = prefs.dashItemsFull()
+            val old = setOf("cpu", "ram", "storage", "net")
+            val at = cur.indexOfFirst { it in old }
+            if (at >= 0 && "system" !in cur) {
+                val out = cur.toMutableList(); out[at] = "system"
+                prefs.dashItems = out.filter { it !in old }
+            }
+            prefs.dashSysMigrated = true
+        }
     }
 
     // ----- Live widgets: άδειες, πόλη καιρού, σημείωμα -----
@@ -283,13 +298,14 @@ fun Dashboard(
             "calendar" -> CalendarCard(mod, canTap, onAccess)
             "alarm" -> AlarmCard(mod, canTap)
             "date" -> DateCard(mod)
-            "month" -> MonthCard(mod)
+            "month" -> MonthCard(mod, compact = prefs.cardSpanOf(id) == CardSpan.Half)
             "progress" -> ProgressCard(mod)
             "steps" -> StepsCard(prefs.stepGoal, mod, canTap, onAccess)
             "screen" -> ScreenTimeCard(mod, canTap, onAccess)
             "data" -> DataCard(mod, canTap, onAccess)
             "note" -> NoteCard(prefs.dashNote, mod, canTap) { noteDialog = true }
             "volume" -> VolumeCard(mod, canTap)
+            "system" -> SystemCard(stats, mod) { if (canTap) Actions.settings(ctx, Settings.ACTION_INTERNAL_STORAGE_SETTINGS) }
             "brightness" -> BrightnessCard(mod, canTap)
             "clock" -> DashClock(prefs.dashClockDark, mod.clickable(enabled = !editMode) {
                 Actions.start(ctx, Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -390,6 +406,11 @@ fun Dashboard(
         // Μόνο τα κουμπιά επεξεργασίας πάνω δεξιά (χωρίς τίτλο)
         // σταθερό ύψος: όταν εμφανίζονται τα κουμπιά, ο πίνακας ΔΕΝ μετακινείται (αλλιώς το σηκωμένο κομμάτι «πηδάει»)
         Row(Modifier.fillMaxWidth().height(40.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            // κουμπί edit: πάντα εκεί, μένεις σε επεξεργασία μέχρι να πατήσεις ✓
+            if (!editMode) Box(
+                Modifier.size(36.dp).smokedGlass(CircleShape, alpha = 0.45f).clickable { editMode = true },
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Rounded.Edit, "Επεξεργασία", tint = Smoke.pearl, modifier = Modifier.size(18.dp)) }
             androidx.compose.animation.AnimatedVisibility(
                 editMode,
                 enter = androidx.compose.animation.scaleIn(Motion.pop(Motion.sheet)) + androidx.compose.animation.fadeIn(),
@@ -419,8 +440,8 @@ fun Dashboard(
             val cap = if (isButton(id)) 5 else 2
             val last = rows.lastOrNull()
             // φαρδιές/μεγάλες κάρτες πιάνουν όλη τη γραμμή· οι μισές μπαίνουν ανά δύο
-            val half = isButton(id) || cardSpan(id) == CardSpan.Half
-            val lastHalf = last != null && (isButton(last[0]) || cardSpan(last[0]) == CardSpan.Half)
+            val half = isButton(id) || prefs.cardSpanOf(id) == CardSpan.Half
+            val lastHalf = last != null && (isButton(last[0]) || prefs.cardSpanOf(last[0]) == CardSpan.Half)
             if (last != null && half && lastHalf && isButton(last[0]) == isButton(id) && last.size < cap) last += id else rows += mutableListOf(id)
         }
 
@@ -444,7 +465,7 @@ fun Dashboard(
                 // σταθερά ύψη (κάρτα ~100dp, κουμπιά ~70dp)· αν δεν χωράνε, μικραίνουν αναλογικά
                 // το ρολόι στέκεται πάνω από τον πίνακα, χωρίς φόντο (φαίνεται η ταπετσαρία)
                 val clockPx = if (hasClock) (clockDp * dDash).toInt() else 0
-                val want = (if (hasClock) listOf(clockPx) else emptyList()) + rows.map { if (isButton(it[0])) btnRowPx else if (cardSpan(it[0]) == CardSpan.Big) cardRowPx * 2 + gapPx else cardRowPx }
+                val want = (if (hasClock) listOf(clockPx) else emptyList()) + rows.map { if (isButton(it[0])) btnRowPx else if (prefs.cardSpanOf(it[0]) == CardSpan.Big) cardRowPx * 2 + gapPx else cardRowPx }
                 val gaps = gapPx * (want.size - 1).coerceAtLeast(0)
                 val total = want.sum() + gaps
                 val k = if (total > h) (h - gaps).toFloat() / want.sum() else 1f
@@ -472,7 +493,7 @@ fun Dashboard(
                             val x = x0 + pillPadPx + c * btnW
                             m[id] = androidx.compose.ui.unit.IntRect(x, y, x + btnW, y + rh)
                         }
-                    } else if (cardSpan(row[0]) != CardSpan.Half) {
+                    } else if (prefs.cardSpanOf(row[0]) != CardSpan.Half) {
                         m[row[0]] = androidx.compose.ui.unit.IntRect(padPx, y, padPx + w, y + rh)
                     } else {
                         val cw = (w - gapPx) / 2
@@ -526,7 +547,16 @@ fun Dashboard(
                     }
                     val id = hit.key
                     val start = if (editNow) {
-                        awaitTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                        // δική μας ανίχνευση κίνησης: δεν ακυρώνεται επειδή κάτι άλλο «άγγιξε» το γεγονός
+                        val slop = viewConfiguration.touchSlop
+                        var moved: androidx.compose.ui.input.pointer.PointerInputChange? = null
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!c.pressed) break
+                            if ((c.position - down.position).getDistance() > slop) { moved = c; break }
+                        }
+                        moved
                     } else {
                         awaitLongPressOrCancellation(down.id)?.also { enterEdit() }
                     } ?: return@awaitEachGesture
@@ -536,26 +566,33 @@ fun Dashboard(
                     draggingId = id
                     var lastSwap = 0L
                     try {
-                        drag(start.id) { c ->
+                        fun onMove(c: androidx.compose.ui.input.pointer.PointerInputChange) {
                             c.consume()
                             pointer = c.position
-                            val mine = rectsNow[id] ?: return@drag
+                            val mine = rectsNow[id] ?: return
                             val center = pointer - grab + androidx.compose.ui.geometry.Offset(mine.width / 2f, mine.height / 2f)
                             val now = System.currentTimeMillis()
-                            if (now - lastSwap < 140) return@drag
+                            if (now - lastSwap < 140) return
                             // στόχος: το κομμάτι κάτω από το κέντρο, μόνο στο εσωτερικό 70% (όχι τρεμόπαιγμα στα όρια)
                             val target = rectsNow.entries.firstOrNull { (k, r) ->
                                 if (k == id || k == "clock" || id == "clock") false else {
                                     val mx = r.width * 0.15f; val my = r.height * 0.15f
                                     center.x > r.left + mx && center.x < r.right - mx && center.y > r.top + my && center.y < r.bottom - my
                                 }
-                            } ?: return@drag
+                            } ?: return
                             val l = liveNow
                             val from = l.indexOf(id); val to = l.indexOf(target.key)
                             if (from >= 0 && to >= 0 && from != to) {
                                 live = l.toMutableList().also { x -> x.removeAt(from); x.add(to, id) }
                                 lastSwap = now
                             }
+                        }
+                        onMove(start)
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            val c = ev.changes.firstOrNull { it.id == start.id } ?: break
+                            if (!c.pressed) break
+                            onMove(c)
                         }
                     } finally {
                         endNow()
@@ -660,6 +697,21 @@ fun Dashboard(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text("A", color = if (prefs.dashClockDark) Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        if (editMode && !isButton(id) && id != "clock") {
+                            // μέγεθος κάρτας: μισή ↔ φαρδιά
+                            val wide = prefs.cardSpanOf(id) != CardSpan.Half
+                            Box(
+                                Modifier.align(Alignment.BottomStart).offset((-12).dp, 12.dp).size(44.dp)
+                                    .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) {
+                                        prefs.dashSpans = prefs.dashSpans + (id to (if (wide) CardSpan.Half else CardSpan.Wide).name)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(Modifier.size(26.dp).smokedGlass(CircleShape, alpha = 0.9f, tint = accent), contentAlignment = Alignment.Center) {
+                                    Text(if (wide) "½" else "↔", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

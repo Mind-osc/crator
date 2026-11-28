@@ -130,6 +130,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     var folderSheet by remember { mutableStateOf<String?>(null) }
     var widgetSheet by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var homeMenu by remember { mutableStateOf(false) }
+    var homeEdit by remember { mutableStateOf(false) }
     var pickerPkg by remember { mutableStateOf<String?>(null) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     var barH by remember { mutableStateOf(0.dp) }
@@ -580,6 +581,8 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
                             bottomPad = barH,
                             editCell = widgetSheet?.takeIf { it.first == idx }?.second,
                             onEditCell = { c -> widgetSheet = if (c == null) null else idx to c },
+                            editing = homeEdit,
+                            onToggleEdit = { homeEdit = !homeEdit; if (!homeEdit) widgetSheet = null },
                             onRemoveWidget = { c ->
                                 val it0 = prefs.pages.getOrNull(idx)?.get(c)
                                 prefs.removeHomeAt(idx, c)

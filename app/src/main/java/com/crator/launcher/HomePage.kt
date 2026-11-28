@@ -2,6 +2,10 @@
 
 package com.crator.launcher
 
+import androidx.compose.material.icons.rounded.Edit
+
+import androidx.compose.ui.zIndex
+
 import android.app.role.RoleManager
 import android.content.Intent
 import android.provider.AlarmClock
@@ -131,7 +135,9 @@ internal fun HomePage(
     bottomPad: androidx.compose.ui.unit.Dp = 0.dp,
     editCell: Int? = null,
     onEditCell: (Int?) -> Unit = {},
-    onRemoveWidget: (Int) -> Unit = {}
+    onRemoveWidget: (Int) -> Unit = {},
+    editing: Boolean = false,
+    onToggleEdit: () -> Unit = {}
 ) {
     val items = prefs.pages.getOrNull(index) ?: emptyMap()
     // στόχος φακέλου: εικονίδιο πάνω στο οποίο αιωρείται μια εφαρμογή
@@ -142,6 +148,7 @@ internal fun HomePage(
             prefs.occupied(index)[t.cell]?.takeIf { a -> items[a]?.let { !Item.isSized(it) && it != dragItem } == true }
         }
     } else null
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
         if (index == 0 && prefs.clockStyle != ClockStyle.Hidden) ClockHeader(prefs)
         BoxWithConstraints(
@@ -200,6 +207,12 @@ internal fun HomePage(
                                 .align(Alignment.Center)
                         )
                     }
+                    // edit: πάτημα σε widget → πλαίσιο μεγέθους (χωρίς παρατεταμένο πάτημα)
+                    if (editing && Item.isSized(item)) Box(
+                        Modifier.matchParentSize().zIndex(5f).padding(2.dp)
+                            .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f), RoundedCornerShape(prefs.widgetCorner.dp))
+                            .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { onEditCell(cell) }
+                    )
                     val pop = drag.recent == item
                     Box(if (Item.isSized(item)) Modifier.fillMaxSize() else Modifier.wrapContentSize(Alignment.Center, unbounded = true), contentAlignment = Alignment.Center) {
                     when {
@@ -229,5 +242,15 @@ internal fun HomePage(
             }
         }
         Spacer(Modifier.height(bottomPad))
+    }
+    // κουμπί edit της σελίδας
+    Box(
+        Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 4.dp, end = 12.dp).size(34.dp)
+            .smokedGlass(CircleShape, alpha = if (editing) 0.85f else 0.35f, tint = if (editing) MaterialTheme.colorScheme.primary else Smoke.graphite)
+            .clickable(onClick = onToggleEdit),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(if (editing) Icons.Rounded.Check else Icons.Rounded.Edit, if (editing) "Τέλος" else "Επεξεργασία", tint = Color.White, modifier = Modifier.size(17.dp))
+    }
     }
 }

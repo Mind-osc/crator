@@ -1,5 +1,9 @@
 package com.crator.launcher
 
+import androidx.compose.ui.graphics.graphicsLayer
+
+import androidx.compose.foundation.layout.requiredSize
+
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityManager
@@ -246,18 +250,17 @@ fun SystemWidget(id: Int, widgets: WidgetController, prefs: Prefs, onLongPress: 
         }
         return
     }
-    BoxWithConstraints(modifier.padding(prefs.widgetPadding.dp).fillMaxSize().clip(shape)) {
+    // Ατόφιο, όπως το σχεδίασε η εφαρμογή: χωρίς δικό μας κόψιμο γωνιών και χωρίς αφαίρεση του padding του
+    BoxWithConstraints(modifier.padding(prefs.widgetPadding.dp).fillMaxSize()) {
         val w = maxWidth.value
         val h = maxHeight.value
         AndroidView(
             factory = { ctx ->
                 widgets.host.createView(ctx, id, info).also { v ->
                     (v as? CratorWidgetView)?.onLongPress = { lp() }
-                    // χωρίς το προεπιλεγμένο κενό του Android γύρω από το widget
-                    v.setPadding(0, 0, 0, 0)
                 }
             },
-            update = { v -> v.setPadding(0, 0, 0, 0); runCatching { v.updateAppWidgetSize(Bundle(), listOf(SizeF(w, h))) } },
+            update = { v -> runCatching { v.updateAppWidgetSize(Bundle(), listOf(SizeF(w, h))) } },
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -428,7 +431,7 @@ fun WidgetPicker(widgets: WidgetController, prefs: Prefs, filterPkg: String?, pa
             items(groups, key = { it.first + it.second.size }) { (label, list) ->
                 GroupTitle(label)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(list) { info ->
+                    items(list, key = { it.provider.flattenToString() }) { info ->
                         val prev by produceState<ImageBitmap?>(null, info) {
                             value = withContext(Dispatchers.Default) {
                                 runCatching {
@@ -440,7 +443,7 @@ fun WidgetPicker(widgets: WidgetController, prefs: Prefs, filterPkg: String?, pa
                             }
                         }
                         val (sx, sy) = widgets.defaultSpan(info)
-                        WidgetCard(info.loadLabel(pm), "$sx×$sy", prev, null) { widgets.startAdd(info, page); onClose() }
+                        WidgetCard(info.loadLabel(pm), "$sx×$sy", prev, null, live = { LivePreview(info, widgets) }) { widgets.startAdd(info, page); onClose() }
                     }
                 }
             }
@@ -453,13 +456,14 @@ private fun GroupTitle(t: String) =
     Text(t, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(6.dp, 16.dp, 6.dp, 8.dp))
 
 @Composable
-private fun WidgetCard(name: String, size: String, preview: ImageBitmap?, icon: ImageVector?, onClick: () -> Unit) {
+private fun WidgetCard(name: String, size: String, preview: ImageBitmap?, icon: ImageVector?, live: (@Composable () -> Boolean)? = null, onClick: () -> Unit) {
     Column(
         Modifier.width(150.dp).clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.06f))
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(10.dp)
     ) {
         Box(Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.25f)), contentAlignment = Alignment.Center) {
-            when {
+            val shownLive = live?.invoke() == true
+            if (!shownLive) when {
                 preview != null -> Image(preview, null, Modifier.fillMaxSize().padding(6.dp), contentScale = ContentScale.Fit)
                 icon != null -> Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
             }
@@ -474,4 +478,43 @@ private fun WidgetCard(name: String, size: String, preview: ImageBitmap?, icon: 
 fun Modifier.longPress(onLong: () -> Unit): Modifier = composed {
     val cb by rememberUpdatedState(onLong)
     pointerInput(Unit) { detectTapGestures(onLongPress = { cb() }) }
+}
+
+/**
+ * Η πραγματική προεπισκόπηση του widget, όπως στον launcher της Samsung/Google:
+ * 1) generated preview (Android 15+), 2) previewLayout (Android 12+). Επιστρέφει false αν δεν υπάρχει,
+ * οπότε δείχνεται η εικόνα. Η προεπισκόπηση μικραίνει ολόκληρη για να χωρέσει (όχι στρίμωγμα).
+ */
+@Composable
+private fun LivePreview(info: android.appwidget.AppWidgetProviderInfo, widgets: WidgetController): Boolean {
+    val ctx = LocalContext.current
+    val rv = remember(info) {
+        runCatching {
+            val gen = if (android.os.Build.VERSION.SDK_INT >= 35)
+                widgets.manager.getWidgetPreview(info.provider, info.profile, android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN)
+            else null
+            gen ?: info.previewLayout.takeIf { it != 0 }?.let { android.widget.RemoteViews(info.provider.packageName, it) }
+        }.getOrNull()
+    } ?: return false
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    // φυσικό μέγεθος του widget (px) → κλίμακα για το κουτί της κάρτας
+    val natW = maxOf(info.minWidth, with(d) { 110.dp.roundToPx() })
+    val natH = maxOf(info.minHeight, with(d) { 60.dp.roundToPx() })
+    var ok by remember(info) { mutableStateOf(true) }
+    if (!ok) return false
+    BoxWithConstraints(Modifier.fillMaxSize().padding(6.dp), contentAlignment = Alignment.Center) {
+        val boxW = constraints.maxWidth.toFloat(); val boxH = constraints.maxHeight.toFloat()
+        val k = minOf(boxW / natW, boxH / natH, 1f)
+        AndroidView(
+            factory = { c ->
+                android.widget.FrameLayout(c).also { host ->
+                    runCatching { host.addView(rv.apply(c, host)) }.onFailure { ok = false }
+                }
+            },
+            modifier = Modifier
+                .requiredSize(with(d) { natW.toDp() }, with(d) { natH.toDp() })
+                .graphicsLayer { scaleX = k; scaleY = k }
+        )
+    }
+    return true
 }

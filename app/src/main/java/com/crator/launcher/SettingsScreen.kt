@@ -484,9 +484,12 @@ fun IconPicker(app: AppInfo, prefs: Prefs, repo: AppRepository, onDone: () -> Un
             } else {
                 Column {
                     OutlinedTextField(q, { q = it }, label = { Text("Αναζήτηση") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    val names = remember(q) { pack.drawableNames.filter { q.isBlank() || it.contains(q.lowercase()) }.take(400) }
-                    LazyVerticalGrid(GridCells.Fixed(5), Modifier.height(340.dp).padding(top = 8.dp)) {
-                        items(names) { n ->
+                    // όλα τα εικονίδια του pack (μπορεί να είναι χιλιάδες): η λίστα φτιάχνεται στο παρασκήνιο
+                    val all by produceState<List<String>?>(null, pack) { value = withContext(Dispatchers.Default) { pack.drawableNames } }
+                    val names = remember(q, all) { all.orEmpty().filter { q.isBlank() || it.contains(q.trim().lowercase()) } }
+                    Text(if (all == null) "Φόρτωση εικονιδίων…" else "${names.size} εικονίδια", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    LazyVerticalGrid(GridCells.Fixed(5), Modifier.height(340.dp).padding(top = 4.dp)) {
+                        items(names, key = { it }) { n ->
                             val bmp by produceState<ImageBitmap?>(null, n) {
                                 value = withContext(Dispatchers.Default) { runCatching { pack.drawableByName(n)?.toBitmap(96, 96)?.asImageBitmap() }.getOrNull() }
                             }

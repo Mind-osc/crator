@@ -262,7 +262,22 @@ class IconPack(private val res: Resources, private val pkg: String, private val 
         return if (id != 0) runCatching { res.getDrawable(id, null) }.getOrNull() else null
     }
 
-    val drawableNames: List<String> by lazy { map.values.distinct().sorted() }
+    /** Όλα τα εικονίδια του pack: drawable.xml (λίστα του δημιουργού) + όσα αντιστοιχίζονται σε εφαρμογές */
+    val drawableNames: List<String> by lazy {
+        val all = LinkedHashSet<String>()
+        runCatching {
+            val id = res.getIdentifier("drawable", "xml", pkg)
+            val parser: XmlPullParser = if (id != 0) res.getXml(id) else
+                XmlPullParserFactory.newInstance().newPullParser().apply { setInput(res.assets.open("drawable.xml"), "utf-8") }
+            var ev = parser.eventType
+            while (ev != XmlPullParser.END_DOCUMENT) {
+                if (ev == XmlPullParser.START_TAG && parser.name == "item") parser.getAttributeValue(null, "drawable")?.let { all += it }
+                ev = parser.next()
+            }
+        }
+        all += map.values
+        all.filter { res.getIdentifier(it, "drawable", pkg) != 0 }.sorted()
+    }
 
     companion object {
         private val ACTIONS = listOf(

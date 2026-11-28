@@ -233,9 +233,10 @@ val DASH_INFO = listOf(
     "calendar" to "Ημερολόγιο · επόμενα", "alarm" to "Επόμενο ξυπνητήρι", "date" to "Ημερομηνία",
     "month" to "Μήνας", "progress" to "Πρόοδος ημέρας/έτους", "steps" to "Βήματα",
     "screen" to "Χρόνος οθόνης", "data" to "Δεδομένα σήμερα", "note" to "Σημείωμα",
-    "volume" to "Ήχος (χάρακας)", "brightness" to "Φωτισμός (χάρακας)"
+    "volume" to "Ήχος (χάρακας)", "brightness" to "Φωτισμός (χάρακας)",
+    "system" to "Σύστημα · CPU/RAM/Χώρος/Δίκτυο"
 )
-val DASH_DEFAULT_ITEMS = listOf("cpu", "net", "battery", "thermal") + DEFAULT_SC + listOf("ram", "storage")
+val DASH_DEFAULT_ITEMS = listOf("system", "battery", "thermal") + DEFAULT_SC
 
 /** Λίστα στοιχείων του ταμπλό (με μεταφορά από τις παλιές ρυθμίσεις) */
 fun Prefs.dashItemsFull(): List<String> {

@@ -66,6 +66,21 @@ object Wiz {
 
     data class Bulb(val ip: String, val on: Boolean, val dim: Int)
 
+    /** Η λάμπα δεν απάντησε σε εντολή (αντί να «μην κάνει τίποτα» σιωπηλά) */
+    class NoReply(msg: String) : java.io.IOException(msg)
+
+    /**
+     * Τα sockets δένονται ρητά στο Wi-Fi. Αλλιώς, όταν η Samsung θεωρεί το Wi-Fi «χωρίς internet»
+     * ή είναι ανοιχτά τα κινητά δεδομένα, τα πακέτα προς 192.168.x.x φεύγουν από το λάθος δίκτυο.
+     */
+    private fun wifi(ctx: Context): android.net.Network? = runCatching {
+        val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+        @Suppress("DEPRECATION")
+        cm.allNetworks.firstOrNull { n -> cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true }
+    }.getOrNull()
+
+    private fun socket(ctx: Context): DatagramSocket = DatagramSocket().also { s -> wifi(ctx)?.let { n -> runCatching { n.bindSocket(s) } } }
+
     private fun sp(ctx: Context) = ctx.getSharedPreferences("crator_wiz", Context.MODE_PRIVATE)
     fun saved(ctx: Context): List<String> =
         sp(ctx).getString("ips", "").orEmpty().split(",").filter { it.isNotBlank() }
@@ -87,7 +102,7 @@ object Wiz {
         val wm = ctx.applicationContext.getSystemService(WifiManager::class.java)
         val lock = runCatching { wm.createMulticastLock("crator-wiz").apply { setReferenceCounted(false); acquire() } }.getOrNull()
         try {
-            DatagramSocket().use { s ->
+            socket(ctx).use { s ->
                 s.broadcast = true
                 s.soTimeout = 300
                 val msg = """{"method":"getPilot","params":{}}""".toByteArray()
@@ -114,10 +129,10 @@ object Wiz {
         }
     }
 
-    private fun request(ip: String, json: String): JSONObject? {
-        repeat(2) {
+    private fun request(ctx: Context, ip: String, json: String): JSONObject? {
+        repeat(3) {
             try {
-                DatagramSocket().use { s ->
+                socket(ctx).use { s ->
                     s.soTimeout = 700
                     val b = json.toByteArray()
                     s.send(DatagramPacket(b, b.size, InetAddress.getByName(ip), PORT))
@@ -131,17 +146,17 @@ object Wiz {
         return null
     }
 
-    private fun status(ip: String): Bulb? = request(ip, """{"method":"getPilot","params":{}}""")
+    private fun status(ctx: Context, ip: String): Bulb? = request(ctx, ip, """{"method":"getPilot","params":{}}""")
         ?.optJSONObject("result")
         ?.let { Bulb(ip, it.optBoolean("state", false), it.optInt("dimming", 100)) }
 
-    private fun pilot(ip: String, params: JSONObject): Boolean =
-        request(ip, JSONObject().put("method", "setPilot").put("params", params).toString())
+    private fun pilot(ctx: Context, ip: String, params: JSONObject): Boolean =
+        request(ctx, ip, JSONObject().put("method", "setPilot").put("params", params).toString())
             ?.optJSONObject("result")?.optBoolean("success", false) == true
 
     /** Κατάσταση όλων· αν δεν απαντά καμία από τις αποθηκευμένες, ξαναψάχνει (άλλαξε IP / άλλο δίκτυο) */
     suspend fun states(ctx: Context): List<Bulb> = withContext(Dispatchers.IO) {
-        suspend fun query(ips: List<String>) = coroutineScope { ips.map { async { status(it) } }.awaitAll().filterNotNull() }
+        suspend fun query(ips: List<String>) = coroutineScope { ips.map { async { status(ctx, it) } }.awaitAll().filterNotNull() }
         val saved = saved(ctx)
         val res = if (saved.isEmpty()) emptyList() else query(saved)
         if (res.isNotEmpty() && res.size == saved.size) res
@@ -153,20 +168,23 @@ object Wiz {
 
     suspend fun power(ctx: Context, on: Boolean): List<Bulb> = withContext(Dispatchers.IO) {
         val bulbs = states(ctx)
-        coroutineScope { bulbs.map { b -> async { pilot(b.ip, JSONObject().put("state", on)) } }.awaitAll() }
-        bulbs.map { it.copy(on = on) }
+        if (bulbs.isEmpty()) throw NoReply("Δεν βρέθηκε λάμπα στο Wi-Fi")
+        val ok = coroutineScope { bulbs.map { b -> async { pilot(ctx, b.ip, JSONObject().put("state", on)) } }.awaitAll() }
+        if (ok.none { it }) throw NoReply("Η λάμπα δεν απάντησε")
+        bulbs.mapIndexed { i, b -> if (ok[i]) b.copy(on = on) else b }
     }
 
     /** +/- φωτεινότητα. Η αύξηση ανάβει και τις σβηστές· η μείωση αφορά μόνο τις αναμμένες. */
     suspend fun step(ctx: Context, up: Boolean): List<Bulb> = withContext(Dispatchers.IO) {
         val bulbs = states(ctx)
+        if (bulbs.isEmpty()) throw NoReply("Δεν βρέθηκε λάμπα στο Wi-Fi")
         coroutineScope {
             bulbs.map { b ->
                 async {
                     when {
-                        up && !b.on -> { pilot(b.ip, JSONObject().put("state", true).put("dimming", MIN_DIM)); b.copy(on = true, dim = MIN_DIM) }
-                        up -> { val d = (b.dim + STEP).coerceAtMost(100); pilot(b.ip, JSONObject().put("state", true).put("dimming", d)); b.copy(dim = d) }
-                        b.on -> { val d = (b.dim - STEP).coerceAtLeast(MIN_DIM); pilot(b.ip, JSONObject().put("dimming", d)); b.copy(dim = d) }
+                        up && !b.on -> { pilot(ctx, b.ip, JSONObject().put("state", true).put("dimming", MIN_DIM)); b.copy(on = true, dim = MIN_DIM) }
+                        up -> { val d = (b.dim + STEP).coerceAtMost(100); pilot(ctx, b.ip, JSONObject().put("state", true).put("dimming", d)); b.copy(dim = d) }
+                        b.on -> { val d = (b.dim - STEP).coerceAtLeast(MIN_DIM); pilot(ctx, b.ip, JSONObject().put("dimming", d)); b.copy(dim = d) }
                         else -> b
                     }
                 }
@@ -185,12 +203,19 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int, onLong: () -> Un
     val res = rememberResumed()
     var bulbs by remember { mutableStateOf<List<Wiz.Bulb>?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
 
     fun act(block: suspend () -> List<Wiz.Bulb>) {
         if (busy) return
         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
         busy = true
-        scope.launch { try { suspendRunCatching { bulbs = block() } } finally { busy = false } }
+        scope.launch {
+            try {
+                suspendRunCatching { bulbs = block() }
+                    .onSuccess { problem = null }
+                    .onFailure { e -> problem = (e as? Wiz.NoReply)?.message ?: "Σφάλμα δικτύου" }
+            } finally { busy = false }
+        }
     }
 
     LaunchedEffect(res) {
@@ -204,6 +229,7 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int, onLong: () -> Un
     val anyOn = list?.any { it.on } == true
     val avg = list?.filter { it.on }?.takeIf { it.isNotEmpty() }?.map { it.dim }?.average()?.toInt()
     val sub = when {
+        problem != null -> problem!!
         list == null -> "Αναζήτηση λαμπών…"
         list.isEmpty() -> "Δεν βρέθηκαν λάμπες · πάτα για νέα αναζήτηση"
         anyOn -> "${list.count { it.on }}/${list.size} αναμμένες · ${avg ?: 0}%"
@@ -234,24 +260,29 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int, onLong: () -> Un
                     tint = if (anyOn) Color(0xFFFFE7A8) else Color.White.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            WizButton("All ON", onLong, Icons.Rounded.PowerSettingsNew, glow = list != null && anyOn) { act { Wiz.power(ctx, true) } }
-            WizButton("All OFF", onLong, Icons.Rounded.PowerSettingsNew, glow = list != null && list.isNotEmpty() && !anyOn) { act { Wiz.power(ctx, false) } }
-            WizButton("Brighten", onLong, Icons.Rounded.BrightnessHigh, glow = false) { act { Wiz.step(ctx, true) } }
-            WizButton("Dim down", onLong, Icons.Rounded.BrightnessLow, glow = false) { act { Wiz.step(ctx, false) } }
+        // τα κουμπιά χωράνε πάντα στο ύψος του widget (όχι κομμένα)
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            val labels = maxHeight >= 72.dp
+            val btn = (maxHeight - (if (labels) 22.dp else 4.dp)).coerceIn(28.dp, 54.dp)
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                WizButton("All ON", onLong, Icons.Rounded.PowerSettingsNew, glow = list != null && anyOn, btn, labels) { act { Wiz.power(ctx, true) } }
+                WizButton("All OFF", onLong, Icons.Rounded.PowerSettingsNew, glow = list != null && list.isNotEmpty() && !anyOn, btn, labels) { act { Wiz.power(ctx, false) } }
+                WizButton("Brighten", onLong, Icons.Rounded.BrightnessHigh, glow = false, btn, labels) { act { Wiz.step(ctx, true) } }
+                WizButton("Dim down", onLong, Icons.Rounded.BrightnessLow, glow = false, btn, labels) { act { Wiz.step(ctx, false) } }
+            }
+        }
         }
     }
 }
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun WizButton(label: String, onLong: () -> Unit, icon: ImageVector, glow: Boolean, onClick: () -> Unit) {
+private fun WizButton(label: String, onLong: () -> Unit, icon: ImageVector, glow: Boolean, size: androidx.compose.ui.unit.Dp, showLabel: Boolean, onClick: () -> Unit) {
     Column(
-        Modifier.clip(RoundedCornerShape(16.dp)).combinedClickable(onLongClick = onLong, onClick = onClick).padding(horizontal = 6.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(16.dp)).combinedClickable(onLongClick = onLong, onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(size), contentAlignment = Alignment.Center) {
             // λάμψη πίσω από το ενεργό κουμπί
             Box(
                 Modifier.fillMaxSize().clip(CircleShape).background(
@@ -262,14 +293,14 @@ private fun WizButton(label: String, onLong: () -> Unit, icon: ImageVector, glow
                 )
             )
             Box(
-                Modifier.size(40.dp).clip(CircleShape)
+                Modifier.size(size * 0.74f).clip(CircleShape)
                     .background(if (glow) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f))
                     .border(1.dp, Color.White.copy(alpha = if (glow) 0.5f else 0.18f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, null, tint = if (glow) Color.White else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(22.dp))
+                Icon(icon, null, tint = if (glow) Color.White else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(size * 0.4f))
             }
         }
-        Text(label, color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, maxLines = 1)
+        if (showLabel) Text(label, color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp, maxLines = 1)
     }
 }

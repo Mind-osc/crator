@@ -88,9 +88,13 @@ import kotlin.math.sin
 enum class CardSpan { Half, Wide, Big }
 
 fun cardSpan(id: String): CardSpan = when (id) {
-    "media", "weather", "calendar", "month" -> CardSpan.Wide
+    "media", "weather", "calendar", "system" -> CardSpan.Wide
     else -> CardSpan.Half
 }
+
+/** Το μέγεθος που διάλεξε ο χρήστης στο edit, αλλιώς το προεπιλεγμένο */
+fun Prefs.cardSpanOf(id: String): CardSpan =
+    dashSpans[id]?.let { s -> CardSpan.entries.firstOrNull { it.name == s } } ?: cardSpan(id)
 
 internal object LivePal {
     val media = listOf(Color(0xFF1ED760), Color(0xFF0FB5AE))
@@ -511,7 +515,8 @@ fun DateCard(mod: Modifier) {
 }
 
 @Composable
-fun MonthCard(mod: Modifier) {
+fun MonthCard(mod: Modifier, compact: Boolean = false) {
+    if (compact) { MonthCompact(mod); return }
     val now by produceState(System.currentTimeMillis()) { while (true) { delay(60_000); value = System.currentTimeMillis() } }
     val el = Locale("el")
     val cal = Calendar.getInstance().apply { timeInMillis = now }
@@ -688,25 +693,28 @@ internal object LevelPal {
 fun VolumeCard(mod: Modifier, enabled: Boolean) {
     val ctx = LocalContext.current
     val level by VolumeFeed.get(ctx).collectAsStateWithLifecycle(0f)
-    LevelCard("Ήχος", level, LevelPal.volume, mod, enabled) { VolumeFeed.set(ctx, it) }
+    LevelCard("Ήχος", level, LevelPal.volume, mod, enabled) { f, _ -> VolumeFeed.set(ctx, f) }
 }
 
 @Composable
 fun BrightnessCard(mod: Modifier, enabled: Boolean) {
     val ctx = LocalContext.current
     val level by BrightnessFeed.get(ctx).collectAsStateWithLifecycle(0f)
-    LevelCard("Φωτισμός", level, LevelPal.light, mod, enabled) { f ->
-        if (BrightnessFeed.canWrite(ctx)) BrightnessFeed.set(ctx, f)
-        else BrightnessFeed.requestWrite(ctx)
+    LevelCard("Φωτισμός", level, LevelPal.light, mod, enabled) { f, final ->
+        if (BrightnessFeed.canWrite(ctx)) BrightnessFeed.set(ctx, f, force = final)
+        else if (final) BrightnessFeed.requestWrite(ctx)
     }
 }
 
 @Composable
-private fun LevelCard(label: String, level: Float, colors: List<Color>, mod: Modifier, enabled: Boolean, onSet: (Float) -> Unit) {
+private fun LevelCard(label: String, level: Float, colors: List<Color>, mod: Modifier, enabled: Boolean, onSet: (Float, Boolean) -> Unit) {
     // όσο σέρνεις, δείχνει την τιμή του δαχτύλου (όχι να «πηδάει» με την καθυστέρηση του συστήματος)
     var touch by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
     val set by androidx.compose.runtime.rememberUpdatedState(onSet)
-    val f = (touch ?: level).coerceIn(0f, 1f)
+    // μετά το άφημα κρατά λίγο την τιμή του δαχτύλου, ώσπου να «προλάβει» το σύστημα
+    var hold by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
+    androidx.compose.runtime.LaunchedEffect(hold) { if (hold != null) { delay(900); hold = null } }
+    val f = (touch ?: hold ?: level).coerceIn(0f, 1f)
     LiveCard(mod) {
         Axis("0", "50", "100")
         EspressoRuler(
@@ -718,14 +726,18 @@ private fun LevelCard(label: String, level: Float, colors: List<Color>, mod: Mod
                         val down = awaitFirstDown()
                         down.consume()
                         fun at(x: Float) = (x / size.width).coerceIn(0f, 1f)
-                        touch = at(down.position.x); set(at(down.position.x))
+                        var last = at(down.position.x)
+                        touch = last; set(last, false)
                         while (true) {
                             val ev = awaitPointerEvent()
                             val c = ev.changes.firstOrNull { it.id == down.id } ?: break
                             if (!c.pressed) break
                             c.consume()
-                            touch = at(c.position.x); set(at(c.position.x))
+                            last = at(c.position.x)
+                            touch = last; set(last, false)
                         }
+                        set(last, true)
+                        hold = last
                         touch = null
                     }
                 }
@@ -735,5 +747,76 @@ private fun LevelCard(label: String, level: Float, colors: List<Color>, mod: Mod
             Spacer(Modifier.weight(1f))
             Text("${(f * 100).roundToInt()}%", color = colors[0], fontSize = 16.sp, fontWeight = FontWeight.Medium, style = tnum, maxLines = 1)
         }
+    }
+}
+
+/** Μήνας σε μισή κάρτα: μόνο το πλέγμα, με τον μήνα στην κορυφή */
+@Composable
+private fun MonthCompact(mod: Modifier) {
+    val now by produceState(System.currentTimeMillis()) { while (true) { delay(60_000); value = System.currentTimeMillis() } }
+    val cal = Calendar.getInstance().apply { timeInMillis = now }
+    val today = cal.get(Calendar.DAY_OF_MONTH)
+    val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val first = (cal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
+    val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val rows = (lead + days + 6) / 7
+    LiveCard(mod) {
+        Text(SimpleDateFormat("LLLL", Locale("el")).format(Date(now)).replaceFirstChar { it.uppercase() }, color = LivePal.date[0], fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, lineHeight = 12.sp)
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.SpaceEvenly) {
+            for (r in 0 until rows) Row(Modifier.fillMaxWidth()) {
+                for (c in 0 until 7) {
+                    val n = r * 7 + c - lead + 1
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (n in 1..days) {
+                            if (n == today) Box(Modifier.size(13.dp).clip(CircleShape).background(Brush.linearGradient(LivePal.date)))
+                            Text("$n", color = if (n == today) Color.White else if (c >= 5) LivePal.date[1].copy(alpha = 0.8f) else Smoke.pearl,
+                                fontSize = 8.sp, lineHeight = 9.sp, fontWeight = if (n == today) FontWeight.Bold else FontWeight.Medium, style = tnum, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// =============================================================== Σύστημα: CPU · RAM · Χώρος · Δίκτυο σε μία κάρτα
+
+@Composable
+fun SystemCard(stats: SysStats, mod: Modifier, onStorage: () -> Unit) {
+    LiveCard(mod) {
+        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            val ram = stats.ramUsed.toFloat() / stats.ramTotal.coerceAtLeast(1)
+            val st = stats.stUsed.toFloat() / stats.stTotal.coerceAtLeast(1)
+            SysGauge("CPU", stats.cpuPct / 100f, "${stats.cpuPct.roundToInt()}%", Live.cpu, Modifier.weight(1f))
+            SysGauge("RAM", ram, "${(ram * 100).roundToInt()}%", Live.ram, Modifier.weight(1f))
+            SysGauge("Χώρος", st, "${(st * 100).roundToInt()}%", Live.storage, Modifier.weight(1f).clickable(onClick = onStorage))
+            // δίκτυο: ταχύτητα λήψης και πόσο «γεμάτη» είναι σε σχέση με τα 10 MB/s
+            val rate = stats.rxRate + stats.txRate
+            val nf = (kotlin.math.ln(1.0 + rate) / kotlin.math.ln(1.0 + 10_000_000.0)).toFloat().coerceIn(0f, 1f)
+            SysGauge(stats.netType, nf, shortRate(stats.rxRate), Live.net, Modifier.weight(1f))
+        }
+    }
+}
+
+private fun shortRate(bps: Long): String = when {
+    bps >= 1_000_000 -> "%.1fM".format(bps / 1_000_000.0)
+    bps >= 1_000 -> "${bps / 1_000}K"
+    else -> "${bps}B"
+}
+
+@Composable
+private fun SysGauge(label: String, f: Float, value: String, colors: List<Color>, modifier: Modifier) {
+    Column(modifier.fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Box(Modifier.weight(1f).aspectRatio(1f, matchHeightConstraintsFirst = true), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize().padding(3.dp)) {
+                val sw = 5.dp.toPx()
+                val box = Size(size.minDimension - sw, size.minDimension - sw)
+                val tl = Offset((size.width - box.width) / 2, (size.height - box.height) / 2)
+                drawArc(track, 135f, 270f, false, tl, box, style = Stroke(sw, cap = StrokeCap.Round))
+                drawArc(Brush.sweepGradient(colors + colors[0]), 135f, 270f * f.coerceIn(0.01f, 1f), false, tl, box, style = Stroke(sw, cap = StrokeCap.Round))
+            }
+            Text(value, color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, style = tnum, maxLines = 1)
+        }
+        Text(label, color = colors[0], fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

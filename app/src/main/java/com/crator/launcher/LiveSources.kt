@@ -611,23 +611,37 @@ object VolumeFeed {
 }
 
 /**
- * Φωτεινότητα 0..1 όπως τη δείχνει η μπάρα του συστήματος (περίπου: η τιμή είναι γραμμική,
- * το μάτι όχι — τετραγωνική ρίζα). Η αλλαγή θέλει την ειδική άδεια «Τροποποίηση ρυθμίσεων συστήματος».
+ * Φωτεινότητα 0..1 στην ίδια κλίμακα με τη μπάρα του συστήματος (καμπύλη γάμμα του Android,
+ * BrightnessUtils). Η αλλαγή θέλει την ειδική άδεια «Τροποποίηση ρυθμίσεων συστήματος» και γυρίζει
+ * το «Αυτόματη φωτεινότητα» σε χειροκίνητο — αλλιώς το σύστημα την ξανανεβάζει/κατεβάζει μόνο του.
  */
 object BrightnessFeed {
     private val shared = Shared<Context, Float> { ctx -> level(ctx) }
     fun get(ctx: Context): SharedFlow<Float> = shared.get(ctx.applicationContext)
 
-    private fun max(): Int {
+    private fun cfg(name: String, def: Int): Int {
         val res = android.content.res.Resources.getSystem()
-        val id = res.getIdentifier("config_screenBrightnessSettingMaximum", "integer", "android")
-        return (if (id != 0) runCatching { res.getInteger(id) }.getOrNull() else null)?.takeIf { it > 0 } ?: 255
+        val id = res.getIdentifier(name, "integer", "android")
+        return (if (id != 0) runCatching { res.getInteger(id) }.getOrNull() else null)?.takeIf { it > 0 } ?: def
+    }
+    private val min by lazy { cfg("config_screenBrightnessSettingMinimum", 1) }
+    private val max by lazy { cfg("config_screenBrightnessSettingMaximum", 255).coerceAtLeast(min + 1) }
+
+    // BrightnessUtils του AOSP (HLG)
+    private const val R = 0.5f; private const val A = 0.17883277f; private const val B = 0.28466892f; private const val C = 0.55991073f
+    private fun linearToGamma(v: Int): Float {
+        val n = ((v - min).toFloat() / (max - min)).coerceIn(0f, 1f) * 12f
+        val g = if (n <= 1f) kotlin.math.sqrt(n) * R else A * kotlin.math.ln(n - B) + C
+        return g.coerceIn(0f, 1f)
+    }
+    private fun gammaToLinear(g: Float): Int {
+        val x = g.coerceIn(0f, 1f)
+        val n = if (x <= R) (x / R) * (x / R) else kotlin.math.exp((x - C) / A) + B
+        return (min + (n / 12f).coerceIn(0f, 1f) * (max - min)).roundToIntSafe().coerceIn(min, max)
     }
 
-    private fun read(ctx: Context): Float {
-        val v = android.provider.Settings.System.getInt(ctx.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, 128)
-        return kotlin.math.sqrt((v.toFloat() / max()).coerceIn(0f, 1f))
-    }
+    private fun read(ctx: Context): Float =
+        linearToGamma(android.provider.Settings.System.getInt(ctx.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, (min + max) / 2))
 
     fun canWrite(ctx: Context) = android.provider.Settings.System.canWrite(ctx)
 
@@ -635,10 +649,22 @@ object BrightnessFeed {
         Actions.start(ctx, Intent(android.provider.Settings.ACTION_MANAGE_WRITE_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName)))
     }
 
-    fun set(ctx: Context, f: Float) {
+    private var lastWrite = 0L
+    private var lastValue = -1
+
+    /** force = στο άφημα του δαχτύλου (γράφεται πάντα η τελική τιμή) */
+    fun set(ctx: Context, f: Float, force: Boolean = false) {
         if (!canWrite(ctx)) return
-        val v = (f.coerceIn(0.02f, 1f).let { it * it } * max()).roundToIntSafe().coerceAtLeast(1)
-        runCatching { android.provider.Settings.System.putInt(ctx.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS, v) }
+        val cr = ctx.contentResolver
+        val v = gammaToLinear(f)
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!force && (v == lastValue || now - lastWrite < 30)) return // ~30 εγγραφές/δευτ., όχι πλημμύρα
+        lastWrite = now; lastValue = v
+        runCatching {
+            if (android.provider.Settings.System.getInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE, 0) != android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+                android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE, android.provider.Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
+            android.provider.Settings.System.putInt(cr, android.provider.Settings.System.SCREEN_BRIGHTNESS, v)
+        }
     }
 
     private fun level(ctx: Context): Flow<Float> = callbackFlow {
