@@ -178,14 +178,14 @@ fun AppDrawer(
         val at = (((i / prefs.drawerCols) + 1) * prefs.drawerCols).coerceAtMost(list.size)
         list.toMutableList().also { it.add(at, DrawerEntry.P(sid, f)) }
     }
-    val close by rememberUpdatedState(onClose)
+    val closeDrawer by rememberUpdatedState(onClose)
     val conn = remember {
         object : NestedScrollConnection {
             var acc = 0f
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.Drag && available.y > 0) {
                     acc += available.y
-                    if (acc > 260f) { acc = 0f; close() }
+                    if (acc > 260f) { acc = 0f; closeDrawer() }
                 } else if (available.y < 0) acc = 0f
                 return Offset.Zero
             }
@@ -214,7 +214,7 @@ fun AppDrawer(
     // Συμπαγές πάνελ κάτω (φτάνεται με το ένα χέρι)· πάτημα έξω = κλείσιμο
     Box(
         Modifier.fillMaxSize().statusBarsPadding().imePadding()
-            .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { close() },
+            .clickable(indication = null, interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }) { closeDrawer() },
         contentAlignment = Alignment.BottomCenter
     ) {
     Column(
@@ -261,7 +261,7 @@ fun AppDrawer(
                         val vel = vt.calculateVelocity().y
                         val endCb = pullEndCb
                         if (endCb != null) endCb(vel)
-                        else if (pull.value > size.height * 0.22f || vel > 1800f) close()
+                        else if (pull.value > size.height * 0.22f || vel > 1800f) closeDrawer()
                         else scope.launch { pull.animateTo(0f, Motion.lively(Motion.overlay)) }
                     }
                 }
@@ -276,7 +276,7 @@ fun AppDrawer(
         Box(
             Modifier.fillMaxWidth().height(26.dp).pointerInput(Unit) {
                 var t = 0f
-                detectVerticalDragGestures(onDragStart = { t = 0f }, onDragEnd = { if (t > 80) close() }) { c, dy -> t += dy; c.consume() }
+                detectVerticalDragGestures(onDragStart = { t = 0f }, onDragEnd = { if (t > 80) closeDrawer() }) { c, dy -> t += dy; c.consume() }
             },
             contentAlignment = Alignment.Center
         ) { Box(Modifier.size(36.dp, 4.dp).clip(RoundedCornerShape(2.dp)).background(Color.White.copy(alpha = 0.35f))) }
