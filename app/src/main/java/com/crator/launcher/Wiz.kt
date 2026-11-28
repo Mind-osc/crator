@@ -190,10 +190,15 @@ fun WizWidget(modifier: Modifier, press: Modifier, corner: Int, onLong: () -> Un
         if (busy) return
         view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
         busy = true
-        scope.launch { runCatching { bulbs = block() }; busy = false }
+        scope.launch { try { suspendRunCatching { bulbs = block() } } finally { busy = false } }
     }
 
-    LaunchedEffect(res) { if (res && !busy) { busy = true; runCatching { bulbs = Wiz.states(ctx) }; busy = false } }
+    LaunchedEffect(res) {
+        if (res && !busy) {
+            busy = true
+            try { suspendRunCatching { bulbs = Wiz.states(ctx) } } finally { busy = false }
+        }
+    }
 
     val list = bulbs
     val anyOn = list?.any { it.on } == true

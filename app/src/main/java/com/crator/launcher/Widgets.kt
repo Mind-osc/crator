@@ -272,7 +272,7 @@ val CRATOR_WIDGETS = listOf(
 fun CratorWidget(
     item: String,
     prefs: Prefs,
-    onClaude: () -> Unit,
+    onSearch: () -> Unit,
     onSettings: (String?) -> Unit,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier
@@ -294,7 +294,7 @@ fun CratorWidget(
             }
         }
         "claude" -> Box(card, contentAlignment = Alignment.Center) {
-            SearchPill(prefs, Modifier.then(press), onClick = onClaude)
+            SearchPill(prefs, Modifier.then(press), onClick = onSearch)
         }
         "system" -> {
             val res = rememberResumed()

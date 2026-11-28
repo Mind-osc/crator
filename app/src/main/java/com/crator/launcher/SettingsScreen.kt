@@ -107,7 +107,6 @@ fun SettingsScreen(
     activity: MainActivity,
     prefs: Prefs,
     repo: AppRepository,
-    chat: ChatState,
     section: String?,
     onSection: (String?) -> Unit,
     onClose: () -> Unit
@@ -152,7 +151,6 @@ fun SettingsScreen(
                     "gestures" -> GesturesSection(prefs)
                     "drawer" -> DrawerSection(prefs, repo)
                     "folders" -> FoldersSection(prefs)
-                    "claude" -> ClaudeSection(prefs, chat)
                     "dash" -> DashSection(prefs)
                     "about" -> AboutSection(activity, prefs)
                 }
@@ -433,49 +431,6 @@ private fun DrawerSection(p: Prefs, repo: AppRepository) {
             Switch(app.key in p.hidden, { h -> p.hidden = if (h) p.hidden + app.key else p.hidden - app.key })
         }
     }
-}
-
-@Composable
-private fun ClaudeSection(p: Prefs, chat: ChatState) {
-    val ctx = LocalContext.current
-    Group("Τρόπος σύνδεσης")
-    ChoicePref("Πώς μιλάς με τον Claude", ClaudeMode.entries, p.claudeMode, { it.label }) { p.claudeMode = it }
-    Text(
-        when (p.claudeMode) {
-            ClaudeMode.Auto -> "Με API key αν έχεις βάλει, αλλιώς το claude.ai με τον λογαριασμό σου."
-            ClaudeMode.Api -> "Δικό μας παράθυρο, απαντήσεις σε πραγματικό χρόνο, άνοιγμα εφαρμογών με εντολή. Χρειάζεται API key."
-            ClaudeMode.Web -> "Το claude.ai μέσα στο παράθυρο, με τον λογαριασμό και τη συνδρομή σου. Σύνδεση με email (η σύνδεση με Google συχνά δεν επιτρέπεται μέσα σε εφαρμογές)."
-            ClaudeMode.App -> "Γράφεις στο Crator και το μήνυμα ανοίγει στην επίσημη εφαρμογή Claude."
-        },
-        color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.padding(4.dp)
-    )
-    if (p.effectiveClaudeMode() == ClaudeMode.Web) TextButton(onClick = { ClaudeWeb.signOut(ctx) }) { Text("Αποσύνδεση από το claude.ai") }
-    Group("API key")
-    var key by remember { mutableStateOf(p.apiKey) }
-    OutlinedTextField(
-        key, { key = it }, label = { Text("Anthropic API key") }, singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        modifier = Modifier.fillMaxWidth()
-    )
-    Row {
-        TextButton(onClick = { p.apiKey = key.trim(); Toast.makeText(ctx, "Αποθηκεύτηκε (κρυπτογραφημένο)", Toast.LENGTH_SHORT).show() }) { Text("Αποθήκευση") }
-        TextButton(onClick = { Actions.openUrl(ctx, "https://console.anthropic.com/settings/keys") }) { Text("Πάρε κλειδί") }
-    }
-    Group("Μοντέλο")
-    val models = listOf("claude-haiku-5-5" to "Haiku 5.5 · γρήγορο", "claude-sonnet-5-5" to "Sonnet 5.5", "claude-opus-5-5" to "Opus 5.5 · πιο έξυπνο")
-    ChoicePref("Μοντέλο", models, models.firstOrNull { it.first == p.claudeModel } ?: ("" to "Άλλο"), { it.second }) { p.claudeModel = it.first }
-    var custom by remember { mutableStateOf(p.claudeModel) }
-    OutlinedTextField(custom, { custom = it; if (it.isNotBlank()) p.claudeModel = it.trim() }, label = { Text("Όνομα μοντέλου (API)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    SliderPref("Μέγιστο μήκος απάντησης", p.maxTokens, 256..4096, " tokens") { p.maxTokens = it }
-    Group("Συμπεριφορά")
-    SwitchPref("Άνοιγμα εφαρμογών από τον Claude", p.claudeOpenApps, "π.χ. «άνοιξε το Spotify»") { p.claudeOpenApps = it }
-    SwitchPref("Αυτόματο πληκτρολόγιο", p.claudeKeyboard) { p.claudeKeyboard = it }
-    var instr by remember { mutableStateOf(p.claudeInstructions) }
-    OutlinedTextField(instr, { instr = it; p.claudeInstructions = it }, label = { Text("Προσωπικές οδηγίες") }, minLines = 3, modifier = Modifier.fillMaxWidth())
-    Group("Εμφάνιση παραθύρου")
-    ChoicePref("Στυλ", PanelStyle.entries, p.panelStyle, { it.label }) { p.panelStyle = it }
-    TextButton(onClick = { chat.clear() }) { Text("Διαγραφή συζήτησης") }
 }
 
 @Composable

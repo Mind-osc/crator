@@ -5,8 +5,6 @@ import android.content.SharedPreferences
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.properties.ReadWriteProperty
@@ -50,7 +48,7 @@ enum class DockAlign(val label: String) { Spread("Ομοιόμορφα"), Center
 enum class SearchPos(val label: String) { AboveDock("Πάνω από dock"), InDock("Μέσα στο dock"), Top("Πάνω"), Hidden("Κρυφή") }
 
 enum class GestureAction(val label: String) {
-    None("Τίποτα"), Claude("Αναζήτηση"), Drawer("Συρτάρι εφαρμογών"), Notifications("Ειδοποιήσεις"),
+    None("Τίποτα"), Search("Αναζήτηση"), Drawer("Συρτάρι εφαρμογών"), Notifications("Ειδοποιήσεις"),
     QuickSettings("Γρήγορες ρυθμίσεις"), Dashboard("Ταμπλό"), LauncherSettings("Ρυθμίσεις Crator")
 }
 
@@ -62,31 +60,22 @@ enum class FolderStyle(val label: String) { Grid("Πλέγμα 2×2"), Stack("Σ
 
 enum class BadgeStyle(val label: String) { Count("Αριθμός"), Dot("Τελεία") }
 
-enum class ClaudeMode(val label: String) { Auto("Αυτόματο"), Api("API key"), Web("claude.ai"), App("Εφαρμογή Claude") }
-
-enum class PanelStyle(val label: String) { Glass("Γυαλί"), Aurora("Aurora"), Solid("Συμπαγές") }
-
 class Prefs(private val context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("crator", Context.MODE_PRIVATE)
 
-    private val secure: SharedPreferences by lazy {
-        try {
-            val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
-            EncryptedSharedPreferences.create(
-                context, "crator_secure", key,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Exception) {
-            context.getSharedPreferences("crator_secure_fb", Context.MODE_PRIVATE)
-        }
+    init {
+        // Παλιό αποθηκευμένο API key του Claude: σβήνεται από τη συσκευή
+        context.deleteSharedPreferences("crator_secure")
+        context.deleteSharedPreferences("crator_secure_fb")
     }
 
     private fun int(key: String, def: Int) = PrefState(sp.getInt(key, def)) { sp.edit().putInt(key, it).apply() }
     private fun bool(key: String, def: Boolean) = PrefState(sp.getBoolean(key, def)) { sp.edit().putBoolean(key, it).apply() }
     private fun str(key: String, def: String) = PrefState(sp.getString(key, def) ?: def) { sp.edit().putString(key, it).apply() }
     private inline fun <reified E : Enum<E>> enm(key: String, def: E): PrefState<E> {
-        val v = runCatching { enumValueOf<E>(sp.getString(key, def.name) ?: def.name) }.getOrDefault(def)
+        // «Claude» ήταν το παλιό όνομα της χειρονομίας αναζήτησης
+        val raw = sp.getString(key, def.name)?.let { if (it == "Claude") "Search" else it }
+        val v = enumValues<E>().firstOrNull { it.name == raw } ?: def
         return PrefState(v) { sp.edit().putString(key, it.name).apply() }
     }
 
@@ -148,7 +137,7 @@ class Prefs(private val context: Context) {
     var blurStrength by int("blur", 24)
 
     // ---------- Χειρονομίες ----------
-    var swipeDown by enm("g_down", GestureAction.Claude)
+    var swipeDown by enm("g_down", GestureAction.Search)
     var swipeUp by enm("g_up", GestureAction.Drawer)
     var doubleTap by enm("g_double", GestureAction.None)
 
@@ -161,20 +150,6 @@ class Prefs(private val context: Context) {
     var drawerColor by int("drawer_color", 0xFF0B0C14.toInt())
     var drawerOpacity by int("drawer_opacity", 82)
     var drawerKeyboard by bool("drawer_kb", false)
-
-    // ---------- Claude ----------
-    var claudeModel by str("claude_model", "claude-sonnet-5-5")
-    var maxTokens by int("max_tokens", 1024)
-    var claudeOpenApps by bool("claude_open", true)
-    var claudeInstructions by str("claude_instr", "")
-    var panelStyle by enm("panel_style", PanelStyle.Glass)
-    var claudeMode by enm("claude_mode", ClaudeMode.Auto)
-    fun effectiveClaudeMode(): ClaudeMode = when (claudeMode) {
-        ClaudeMode.Auto -> if (apiKey.isBlank()) ClaudeMode.Web else ClaudeMode.Api
-        else -> claudeMode
-    }
-    var claudeKeyboard by bool("claude_kb", true)
-    var apiKey by PrefState(secure.getString("api_key", "") ?: "") { secure.edit().putString("api_key", it).apply() }
 
     // ---------- Ταμπλό ----------
     var dashboardEnabled by bool("dash", true)

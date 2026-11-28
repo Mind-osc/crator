@@ -154,8 +154,8 @@ fun AppDrawer(
     val inFolders = folders.flatMap { it.second.apps }.toSet()
     val list: List<DrawerEntry> = remember(apps, nq, prefs.hidden, folders) {
         if (nq.isNotEmpty()) {
-            apps.filter { it.key !in prefs.hidden && (it.label.norm().contains(nq) || it.component.packageName.contains(nq)) }
-                .sortedBy { if (it.label.norm().startsWith(nq)) 0 else 1 }
+            apps.filter { it.key !in prefs.hidden && (it.normLabel.contains(nq) || it.component.packageName.contains(nq)) }
+                .sortedBy { if (it.normLabel.startsWith(nq)) 0 else 1 }
                 .map { DrawerEntry.A(it) }
         } else {
             folders.sortedBy { it.second.name.norm() }.map { DrawerEntry.F(it.first, it.second) } +

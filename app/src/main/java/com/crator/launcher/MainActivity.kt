@@ -7,7 +7,6 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -25,18 +24,6 @@ class MainActivity : ComponentActivity() {
     lateinit var repo: AppRepository
     lateinit var widgets: WidgetController
     val homeEvents = mutableIntStateOf(0)
-
-    private var fileResult: ((Int, Intent?) -> Unit)? = null
-    private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        fileResult?.invoke(r.resultCode, r.data); fileResult = null
-    }
-
-    /** Επιλογή αρχείων για ανέβασμα στο claude.ai */
-    fun pickFiles(intent: Intent, onResult: (Int, Intent?) -> Unit): Boolean = try {
-        fileResult?.invoke(RESULT_CANCELED, null)
-        fileResult = onResult
-        fileLauncher.launch(intent); true
-    } catch (e: Exception) { fileResult = null; false }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,19 +43,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         repo.load()
+        Motion.bind(prefs, Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f))
 
         setContent {
             val ctx = LocalContext.current
             val scheme = if (prefs.dynamicColors) dynamicDarkColorScheme(ctx)
             else darkColorScheme(primary = Color(prefs.accent), secondary = Color(prefs.accent))
             MaterialTheme(colorScheme = scheme, typography = cratorTypography()) {
-                val sysScale = remember { Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) }
-                Motion.speed = if (sysScale == 0f) 8f else (prefs.animSpeed / 100f) / sysScale.coerceAtLeast(0.25f)
-                Motion.overlay = prefs.speedOverlay / 100f
-                Motion.sheet = prefs.speedSheet / 100f
-                Motion.drag = prefs.speedDrag / 100f
-                Motion.icon = prefs.speedIcon / 100f
-                Motion.page = prefs.speedPage / 100f
                 CompositionLocalProvider(LocalContentColor provides Smoke.pearl) {
                     // Επαναφόρτωση εικονιδίων όταν αλλάζει το pack
                     val first = remember { booleanArrayOf(true) }
@@ -102,15 +83,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Όταν πιέζεται η μνήμη: ελευθερώνουμε το WebView του Claude (ξαναφορτώνει όταν το ανοίξεις)
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) ClaudeWeb.release()
-        else if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) ClaudeWeb.pause()
-    }
-
     override fun onDestroy() {
-        ClaudeWeb.release()
         repo.dispose()
         super.onDestroy()
     }

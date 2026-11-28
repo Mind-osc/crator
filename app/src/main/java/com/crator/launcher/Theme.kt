@@ -84,12 +84,20 @@ fun cratorTypography(): Typography {
 /** Κινήσεις με ελατήρια: ό,τι κινείται, κινείται «οργανικά» */
 object Motion {
     /** Γενική ταχύτητα και ανά κατηγορία (1 = κανονική) */
-    var speed = 1f
-    var overlay = 1f
-    var sheet = 1f
-    var drag = 1f
-    var icon = 1f
-    var page = 1f
+    // Διαβάζονται κατευθείαν από τις ρυθμίσεις (state), ώστε όποιο composable τις χρησιμοποιεί
+    // να ανανεώνεται μόνο του — χωρίς εγγραφές σε global μέσα στο composition
+    private var prefs: Prefs? = null
+    private var systemScale = 1f
+    fun bind(p: Prefs, animatorScale: Float) { prefs = p; systemScale = animatorScale }
+    val speed: Float get() {
+        val p = prefs ?: return 1f
+        return if (systemScale == 0f) 8f else (p.animSpeed / 100f) / systemScale.coerceAtLeast(0.25f)
+    }
+    val overlay: Float get() = (prefs?.speedOverlay ?: 100) / 100f
+    val sheet: Float get() = (prefs?.speedSheet ?: 100) / 100f
+    val drag: Float get() = (prefs?.speedDrag ?: 100) / 100f
+    val icon: Float get() = (prefs?.speedIcon ?: 100) / 100f
+    val page: Float get() = (prefs?.speedPage ?: 100) / 100f
     private fun k(s: Float, c: Float): Float { val v = speed * c; return s * v * v }
     fun <T> soft(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.9f, stiffness = k(240f, c))
     fun <T> lively(c: Float = 1f): SpringSpec<T> = spring(dampingRatio = 0.74f, stiffness = k(380f, c))

@@ -26,6 +26,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
@@ -41,7 +44,10 @@ class AppInfo(
     val key: String,
     val icon: IconData,
     val user: UserHandle
-)
+) {
+    /** Για αναζήτηση/ταξινόμηση: υπολογίζεται μία φορά, όχι σε κάθε πλήκτρο */
+    val normLabel: String = label.norm()
+}
 
 private val MARKS = Regex("\\p{Mn}+")
 fun String.norm(): String = MARKS.replace(Normalizer.normalize(lowercase(), Normalizer.Form.NFD), "")
@@ -54,16 +60,18 @@ class AppRepository(private val context: Context, private val prefs: Prefs) {
     val launcherApps: LauncherApps = context.getSystemService(LauncherApps::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var job: Job? = null
+    private var cacheJob: Job? = null
+    private val mutex = Mutex()
     var pack: IconPack? = null
         private set
     var onLoaded: (() -> Unit)? = null
 
     private val callback = object : LauncherApps.Callback() {
-        override fun onPackageRemoved(packageName: String?, user: UserHandle?) = load()
-        override fun onPackageAdded(packageName: String?, user: UserHandle?) = load()
-        override fun onPackageChanged(packageName: String?, user: UserHandle?) = load()
-        override fun onPackagesAvailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) = load()
-        override fun onPackagesUnavailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) = load()
+        override fun onPackageRemoved(packageName: String?, user: UserHandle?) = refresh(listOfNotNull(packageName))
+        override fun onPackageAdded(packageName: String?, user: UserHandle?) = refresh(listOfNotNull(packageName))
+        override fun onPackageChanged(packageName: String?, user: UserHandle?) = refresh(listOfNotNull(packageName))
+        override fun onPackagesAvailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) = refresh(packageNames?.toList().orEmpty())
+        override fun onPackagesUnavailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) = refresh(packageNames?.toList().orEmpty())
     }
 
     init {
@@ -77,7 +85,7 @@ class AppRepository(private val context: Context, private val prefs: Prefs) {
 
     fun load() {
         job?.cancel()
-        job = scope.launch {
+        job = scope.launch { mutex.withLock {
             // Ψυχρή εκκίνηση (π.χ. το σύστημα έκλεισε τον launcher για μνήμη): τα εικονίδια
             // εμφανίζονται αμέσως από τον δίσκο, μετά ανανεώνονται στο παρασκήνιο
             if (apps.value.isEmpty()) {
@@ -87,6 +95,27 @@ class AppRepository(private val context: Context, private val prefs: Prefs) {
             val list = withContext(Dispatchers.Default) { query() }
             apps.value = list
             onLoaded?.invoke()
+            scheduleCacheWrite(0)
+        } }
+    }
+
+    /** Μόνο τα πακέτα που άλλαξαν ξαναφτιάχνουν εικονίδια, όχι όλη η λίστα */
+    fun refresh(packages: Collection<String>) {
+        if (packages.isEmpty() || job?.isActive == true || prefs.iconPack in packages) { load(); return }
+        scope.launch { mutex.withLock {
+            val fresh = withContext(Dispatchers.Default) { packages.flatMap { queryPackage(it) } }
+            apps.value = (apps.value.filter { it.component.packageName !in packages } + fresh).sortedBy { it.normLabel }
+            onLoaded?.invoke()
+            scheduleCacheWrite(3000)
+        } }
+    }
+
+    // Η εγγραφή όλων των PNG είναι βαριά: γίνεται μία φορά αφού ηρεμήσουν οι αλλαγές
+    private fun scheduleCacheWrite(waitMs: Long) {
+        cacheJob?.cancel()
+        cacheJob = scope.launch {
+            delay(waitMs)
+            val list = apps.value
             withContext(Dispatchers.IO) { runCatching { writeCache(list) } }
         }
     }
@@ -130,18 +159,24 @@ class AppRepository(private val context: Context, private val prefs: Prefs) {
     private fun query(): List<AppInfo> {
         val packName = prefs.iconPack
         pack = if (packName.isBlank()) null else IconPack.load(context, packName)
+        return activities(null).sortedBy { it.normLabel }
+    }
+
+    private fun queryPackage(pkg: String): List<AppInfo> {
+        if (pack == null && prefs.iconPack.isNotBlank()) pack = IconPack.load(context, prefs.iconPack)
+        return activities(pkg)
+    }
+
+    private fun activities(pkg: String?): List<AppInfo> {
         val user = Process.myUserHandle()
-        val out = ArrayList<AppInfo>()
         val labels = prefs.labels
-        for (ai in launcherApps.getActivityList(null, user)) {
-            if (ai.componentName.packageName == context.packageName) continue
+        return launcherApps.getActivityList(pkg, user).mapNotNull { ai ->
+            if (ai.componentName.packageName == context.packageName) return@mapNotNull null
             val key = ai.componentName.flattenToString()
             val orig = ai.label?.toString() ?: ai.componentName.packageName
-            val icon = runCatching { buildIcon(ai, key) }.getOrNull() ?: continue
-            out += AppInfo(ai.componentName, labels[key] ?: orig, orig, key, icon, user)
+            val icon = runCatching { buildIcon(ai, key) }.getOrNull() ?: return@mapNotNull null
+            AppInfo(ai.componentName, labels[key] ?: orig, orig, key, icon, user)
         }
-        out.sortBy { it.label.norm() }
-        return out
     }
 
     private fun buildIcon(ai: LauncherActivityInfo, key: String): IconData {

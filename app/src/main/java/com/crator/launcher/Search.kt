@@ -123,8 +123,8 @@ fun SearchScreen(
     val math = remember(q) { calc(q) }
     val found = remember(apps, nq, prefs.hidden) {
         if (nq.isEmpty()) emptyList()
-        else apps.filter { it.key !in prefs.hidden && (it.label.norm().contains(nq) || it.component.packageName.contains(nq)) }
-            .sortedWith(compareBy({ if (it.label.norm().startsWith(nq)) 0 else if (it.label.norm().split(' ').any { w -> w.startsWith(nq) }) 1 else 2 }, { it.label.norm() }))
+        else apps.filter { it.key !in prefs.hidden && (it.normLabel.contains(nq) || it.component.packageName.contains(nq)) }
+            .sortedWith(compareBy({ if (it.normLabel.startsWith(nq)) 0 else if (it.normLabel.split(' ').any { w -> w.startsWith(nq) }) 1 else 2 }, { it.normLabel }))
             .take(30)
     }
     val shortcuts = remember(nq) {
