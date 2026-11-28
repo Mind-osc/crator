@@ -249,7 +249,10 @@ object WeatherFeed {
             if (age >= FRESH_MS) {
                 suspendRunCatching { fetch(ctx, city) }
                     .onSuccess { last = it; emit(Feed.Ready(it)) }
-                    .onFailure { e -> if (last == null) emit(Feed.Failed(if (e is UnknownCity) "Δεν βρέθηκε η πόλη «$city»" else "Χωρίς σύνδεση")) }
+                    .onFailure { e ->
+                        android.util.Log.w("CratorWeather", "fetch failed", e)
+                        if (last == null) emit(Feed.Failed(explain(e, city)))
+                    }
             }
             // αν απέτυχε, ξαναδοκιμάζει σε 2′· αλλιώς όταν «παλιώσει»
             val wait = last?.let { FRESH_MS - (System.currentTimeMillis() - it.fetchedAt) } ?: 120_000L
@@ -258,13 +261,29 @@ object WeatherFeed {
     }
 
     private class UnknownCity : Exception()
+    private class ApiError(val code: Int, val reason: String?) : java.io.IOException("HTTP $code $reason")
+
+    /** Συγκεκριμένο μήνυμα, ώστε να ξέρουμε τι φταίει (όχι γενικό «χωρίς σύνδεση») */
+    private fun explain(e: Throwable, city: String): String = when (e) {
+        is UnknownCity -> "Δεν βρέθηκε η πόλη «$city» — πάτα για αλλαγή"
+        is ApiError -> "Open-Meteo: σφάλμα ${e.code}" + (e.reason?.let { " · $it" } ?: "")
+        is java.net.UnknownHostException -> "Χωρίς σύνδεση στο internet"
+        is java.net.SocketTimeoutException -> "Αργή σύνδεση — ξαναδοκιμάζει"
+        is javax.net.ssl.SSLException -> "Σφάλμα ασφαλούς σύνδεσης"
+        is org.json.JSONException -> "Απρόσμενη απάντηση καιρού"
+        else -> "Σφάλμα: ${e.javaClass.simpleName}"
+    }
 
     private suspend fun get(url: String): String = runInterruptible(Dispatchers.IO) {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.connectTimeout = 10_000; c.readTimeout = 10_000
             c.setRequestProperty("User-Agent", "Crator launcher")
-            if (c.responseCode !in 200..299) throw java.io.IOException("HTTP ${c.responseCode}")
+            val code = c.responseCode
+            if (code !in 200..299) {
+                val body = runCatching { c.errorStream?.bufferedReader()?.use { it.readText() } }.getOrNull()
+                throw ApiError(code, body?.let { runCatching { JSONObject(it).optString("reason").ifBlank { null } }.getOrNull() })
+            }
             c.inputStream.bufferedReader().use { it.readText() }
         } finally { c.disconnect() }
     }
@@ -278,7 +297,7 @@ object WeatherFeed {
         val forecast = get(
             "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
                 "&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m" +
-                "&hourly=temperature_2m&forecast_hours=24" +
+                "&hourly=temperature_2m" +
                 "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max" +
                 "&forecast_days=6&timezone=auto&timeformat=unixtime"
         )
@@ -318,7 +337,9 @@ object WeatherFeed {
             )
         }
         val ht = h.getJSONArray("time"); val hv = h.getJSONArray("temperature_2m")
-        val hours = (0 until ht.length()).map { ht.getLong(it) to hv.optDouble(it) }
+        // οι επόμενες 24 ώρες από τώρα (το API δίνει όλες τις ημέρες)
+        val from = System.currentTimeMillis() / 1000 - 3600
+        val hours = (0 until ht.length()).map { ht.getLong(it) to hv.optDouble(it) }.filter { it.first >= from && !it.second.isNaN() }.take(24)
         val a = air?.let { runCatching { JSONObject(it).getJSONObject("current") }.getOrNull() }
         return Weather(
             place = place,

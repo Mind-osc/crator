@@ -80,8 +80,7 @@ import kotlin.math.sin
 enum class CardSpan { Half, Wide, Big }
 
 fun cardSpan(id: String): CardSpan = when (id) {
-    "media", "weather", "calendar" -> CardSpan.Wide
-    "month" -> CardSpan.Big
+    "media", "weather", "calendar", "month" -> CardSpan.Wide
     else -> CardSpan.Half
 }
 
@@ -506,31 +505,38 @@ fun DateCard(mod: Modifier) {
 @Composable
 fun MonthCard(mod: Modifier) {
     val now by produceState(System.currentTimeMillis()) { while (true) { delay(60_000); value = System.currentTimeMillis() } }
+    val el = Locale("el")
     val cal = Calendar.getInstance().apply { timeInMillis = now }
     val today = cal.get(Calendar.DAY_OF_MONTH)
     val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
     val first = (cal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
     val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Δευτέρα πρώτη
+    val rows = (lead + days + 6) / 7
     LiveCard(mod) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(SimpleDateFormat("LLLL yyyy", Locale("el")).format(Date(now)).replaceFirstChar { it.uppercase() }, color = LivePal.date[0], fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(4.dp))
-        Row(Modifier.fillMaxWidth()) {
-            listOf("Δ", "Τ", "Τ", "Π", "Π", "Σ", "Κ").forEachIndexed { i, d ->
-                Text(d, color = if (i >= 5) LivePal.date[1] else dim, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            // αριστερά: μήνας και σημερινή ημέρα
+            Column(Modifier.width(74.dp)) {
+                Text(SimpleDateFormat("LLLL", el).format(Date(now)).replaceFirstChar { it.uppercase() }, color = LivePal.date[0], fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text("$today", color = Smoke.pearl, fontSize = 30.sp, fontFamily = Orbitron, fontWeight = FontWeight.Bold, maxLines = 1)
+                Meta(SimpleDateFormat("EEEE", el).format(Date(now)))
             }
-        }
-        val cells = lead + days
-        val rows = (cells + 6) / 7
-        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.SpaceEvenly) {
-            for (r in 0 until rows) Row(Modifier.fillMaxWidth()) {
-                for (c in 0 until 7) {
-                    val n = r * 7 + c - lead + 1
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        if (n in 1..days) {
-                            if (n == today) Box(Modifier.size(22.dp).clip(CircleShape).background(Brush.linearGradient(LivePal.date)))
-                            Text("$n", color = if (n == today) Color.White else if (c >= 5) LivePal.date[1].copy(alpha = 0.8f) else Smoke.pearl, fontSize = 11.sp, fontWeight = if (n == today) FontWeight.Bold else FontWeight.Medium, style = tnum)
+            Spacer(Modifier.width(8.dp))
+            // δεξιά: πυκνό πλέγμα μήνα
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) {
+                Row(Modifier.fillMaxWidth()) {
+                    listOf("Δ", "Τ", "Τ", "Π", "Π", "Σ", "Κ").forEachIndexed { i, d ->
+                        Text(d, color = if (i >= 5) LivePal.date[1] else dim, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
+                    }
+                }
+                for (r in 0 until rows) Row(Modifier.fillMaxWidth()) {
+                    for (c in 0 until 7) {
+                        val n = r * 7 + c - lead + 1
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            if (n in 1..days) {
+                                if (n == today) Box(Modifier.size(15.dp).clip(CircleShape).background(Brush.linearGradient(LivePal.date)))
+                                Text("$n", color = if (n == today) Color.White else if (c >= 5) LivePal.date[1].copy(alpha = 0.8f) else Smoke.pearl,
+                                    fontSize = 9.sp, lineHeight = 10.sp, fontWeight = if (n == today) FontWeight.Bold else FontWeight.Medium, style = tnum, maxLines = 1)
+                            }
                         }
                     }
                 }
