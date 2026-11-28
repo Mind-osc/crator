@@ -43,7 +43,14 @@ jobs:
         env:
           CRATOR_STORE_PASSWORD: ${{ secrets.CRATOR_STORE_PASSWORD }}
           CRATOR_KEY_ALIAS: crator
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+      # τα σφάλματα του Kotlin εμφανίζονται ως annotations (ορατά χωρίς τα logs)
+      - name: Report compile errors
+        if: failure()
+        run: |
+          grep -E "^e: " build.log | head -40 | sed -E 's#^e: (file://)?#::error::#' || true
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk Crator.apk
