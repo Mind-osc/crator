@@ -677,6 +677,7 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
 
         Presence(if (homeMenu) Unit else null) { HomeMenu(
             prefs, popupAnchor,
+            onEdit = { homeMenu = false; homeEdit = true },
             onWidgets = { homeMenu = false; pickerPkg = null; overlay = Overlay.Widgets },
             onWallpaper = { homeMenu = false; Actions.start(ctx, Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Ταπετσαρία")) },
             onSettings = { homeMenu = false; openSettings(null) },

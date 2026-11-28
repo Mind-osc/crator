@@ -204,6 +204,12 @@ class WidgetController(private val activity: Activity, private val prefs: Prefs)
         val p = pending ?: return
         pending = null
         val (sx, sy) = defaultSpan(p.info)
+        // πρώτα στην τρέχουσα σελίδα, μικραίνοντας αν χρειάζεται (μετά το μεγαλώνεις από τις γωνίες)
+        val page = p.page.coerceIn(0, prefs.homePages - 1)
+        val f = prefs.fine.coerceIn(1, 4)
+        for (h in generateSequence(sy) { (it - f).takeIf { n -> n >= 1 } } + sequenceOf(1)) for (w in sx downTo 1) {
+            prefs.findSpot(page, w, h)?.let { prefs.setHome(page, it, Item.widget(p.id, w, h)); return }
+        }
         if (!prefs.placeOnHome(Item.widget(p.id, sx, sy), p.page)) {
             host.deleteAppWidgetId(p.id)
             Toast.makeText(activity, "Δεν υπάρχει χώρος για το widget", Toast.LENGTH_SHORT).show()
@@ -443,7 +449,7 @@ fun WidgetPicker(widgets: WidgetController, prefs: Prefs, filterPkg: String?, pa
                             }
                         }
                         val (sx, sy) = widgets.defaultSpan(info)
-                        WidgetCard(info.loadLabel(pm), "$sx×$sy", prev, null, live = { LivePreview(info, widgets) }) { widgets.startAdd(info, page); onClose() }
+                        WidgetCard(info.loadLabel(pm), "$sx×${(sy + prefs.fine - 1) / prefs.fine.coerceAtLeast(1)}", prev, null, live = { LivePreview(info, widgets) }) { widgets.startAdd(info, page); onClose() }
                     }
                 }
             }

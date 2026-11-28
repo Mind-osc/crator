@@ -56,6 +56,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.AddBox
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Insights
@@ -279,10 +280,12 @@ internal fun HomeMenu(
     onSettings: () -> Unit,
     onAddPage: () -> Unit,
     onRemovePage: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onEdit: () -> Unit = {}
 ) {
     AnchoredPopup(anchor, 10.dp, onClose, corner = 16.dp) {
         Column(Modifier.width(IntrinsicSize.Max).widthIn(min = 150.dp, max = 200.dp).padding(4.dp)) {
+            MenuLine(Icons.Rounded.Edit, Color(0xFFFF8FB8), "Επεξεργασία σελίδας", onEdit)
             MenuLine(Icons.Rounded.Widgets, Color(0xFFB37CFF), "Widgets", onWidgets)
             MenuLine(Icons.Rounded.Wallpaper, Color(0xFF34E0C6), "Ταπετσαρία", onWallpaper)
             MenuLine(Icons.Rounded.Tune, Color(0xFF4DA3FF), "Ρυθμίσεις", onSettings)
@@ -316,17 +319,25 @@ internal fun WidgetResizeFrame(
     var db by remember(cell, item) { mutableStateOf(0f) }
     val L = c0 * cwPx + dl; val T = r0 * chPx + dt
     val R = (c0 + sx) * cwPx + dr; val B = (r0 + sy) * chPx + db
-    // πού θα κουμπώσει
-    val nc = kotlin.math.round(L / cwPx).toInt().coerceIn(0, prefs.cols - 1)
-    val nr = kotlin.math.round(T / chPx).toInt().coerceIn(0, prefs.gridRows - 1)
-    val nsx = (kotlin.math.round(R / cwPx).toInt() - nc).coerceIn(1, prefs.cols - nc)
-    val nsy = (kotlin.math.round(B / chPx).toInt() - nr).coerceIn(1, prefs.gridRows - nr)
-    val ok = prefs.fits(page, nr * prefs.cols + nc, nsx, nsy, exclude = cell)
+    // πού θα κουμπώσει — υπολογίζεται πάντα από τις ΤΡΕΧΟΥΣΕΣ τιμές (το gesture κρατάει παλιό closure)
+    fun target(): IntArray {
+        val l = c0 * cwPx + dl; val t = r0 * chPx + dt
+        val rr = (c0 + sx) * cwPx + dr; val bb = (r0 + sy) * chPx + db
+        val c = kotlin.math.round(l / cwPx).toInt().coerceIn(0, prefs.cols - 1)
+        val r = kotlin.math.round(t / chPx).toInt().coerceIn(0, prefs.gridRows - 1)
+        val w = (kotlin.math.round(rr / cwPx).toInt() - c).coerceIn(1, prefs.cols - c)
+        val h = (kotlin.math.round(bb / chPx).toInt() - r).coerceIn(1, prefs.gridRows - r)
+        val fit = prefs.fits(page, r * prefs.cols + c, w, h, exclude = cell)
+        return intArrayOf(c, r, w, h, if (fit) 1 else 0)
+    }
+    val tg = target()
+    val nc = tg[0]; val nr = tg[1]; val nsx = tg[2]; val nsy = tg[3]; val ok = tg[4] == 1
     fun commit() {
-        if (ok && (nc != c0 || nr != r0 || nsx != sx || nsy != sy)) {
+        val g = target()
+        if (g[4] == 1 && (g[0] != c0 || g[1] != r0 || g[2] != sx || g[3] != sy)) {
             prefs.removeHomeAt(page, cell)
-            val na = nr * prefs.cols + nc
-            prefs.setHome(page, na, Item.resized(item, nsx, nsy))
+            val na = g[1] * prefs.cols + g[0]
+            prefs.setHome(page, na, Item.resized(item, g[2], g[3]))
             onCell(na)
         }
         dl = 0f; dt = 0f; dr = 0f; db = 0f

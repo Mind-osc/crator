@@ -34,6 +34,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.DeveloperBoard
+import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.Cloud
@@ -58,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -784,17 +789,36 @@ private fun MonthCompact(mod: Modifier) {
 @Composable
 fun SystemCard(stats: SysStats, mod: Modifier, onStorage: () -> Unit) {
     LiveCard(mod) {
-        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        // κάθετα: μία γραμμή ανά μέτρηση — εικονιδάκι, όνομα, λεπτή μπάρα, τιμή
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceEvenly) {
             val ram = stats.ramUsed.toFloat() / stats.ramTotal.coerceAtLeast(1)
             val st = stats.stUsed.toFloat() / stats.stTotal.coerceAtLeast(1)
-            SysGauge("CPU", stats.cpuPct / 100f, "${stats.cpuPct.roundToInt()}%", Live.cpu, Modifier.weight(1f))
-            SysGauge("RAM", ram, "${(ram * 100).roundToInt()}%", Live.ram, Modifier.weight(1f))
-            SysGauge("Χώρος", st, "${(st * 100).roundToInt()}%", Live.storage, Modifier.weight(1f).clickable(onClick = onStorage))
-            // δίκτυο: ταχύτητα λήψης και πόσο «γεμάτη» είναι σε σχέση με τα 10 MB/s
+            SysLine(Icons.Rounded.Memory, "CPU", stats.cpuPct / 100f, "${stats.cpuPct.roundToInt()}%", Live.cpu)
+            SysLine(Icons.Rounded.DeveloperBoard, "RAM", ram, "${(ram * 100).roundToInt()}%", Live.ram)
+            SysLine(Icons.Rounded.Storage, "Χώρος", st, "${(st * 100).roundToInt()}%", Live.storage, Modifier.clickable(onClick = onStorage))
             val rate = stats.rxRate + stats.txRate
             val nf = (kotlin.math.ln(1.0 + rate) / kotlin.math.ln(1.0 + 10_000_000.0)).toFloat().coerceIn(0f, 1f)
-            SysGauge(stats.netType, nf, shortRate(stats.rxRate), Live.net, Modifier.weight(1f))
+            SysLine(Icons.Rounded.Wifi, stats.netType, nf, shortRate(stats.rxRate) + "/s", Live.net)
         }
+    }
+}
+
+@Composable
+private fun SysLine(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, f: Float, value: String, colors: List<Color>, modifier: Modifier = Modifier) {
+    val v by androidx.compose.animation.core.animateFloatAsState(f.coerceIn(0f, 1f), Motion.soft(), label = "sys")
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = colors[0], modifier = Modifier.size(13.dp))
+        Spacer(Modifier.width(7.dp))
+        Text(label, color = Smoke.mist, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(46.dp))
+        Canvas(Modifier.weight(1f).height(5.dp)) {
+            val r = CornerRadius(size.height / 2)
+            drawRoundRect(track, cornerRadius = r)
+            val w = (size.width * v).coerceAtLeast(size.height)
+            drawRoundRect(Brush.horizontalGradient(colors, endX = w), size = Size(w, size.height), cornerRadius = r)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(value, color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, style = tnum, maxLines = 1,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.width(44.dp))
     }
 }
 
@@ -804,19 +828,3 @@ private fun shortRate(bps: Long): String = when {
     else -> "${bps}B"
 }
 
-@Composable
-private fun SysGauge(label: String, f: Float, value: String, colors: List<Color>, modifier: Modifier) {
-    Column(modifier.fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Box(Modifier.weight(1f).aspectRatio(1f, matchHeightConstraintsFirst = true), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize().padding(3.dp)) {
-                val sw = 5.dp.toPx()
-                val box = Size(size.minDimension - sw, size.minDimension - sw)
-                val tl = Offset((size.width - box.width) / 2, (size.height - box.height) / 2)
-                drawArc(track, 135f, 270f, false, tl, box, style = Stroke(sw, cap = StrokeCap.Round))
-                drawArc(Brush.sweepGradient(colors + colors[0]), 135f, 270f * f.coerceIn(0.01f, 1f), false, tl, box, style = Stroke(sw, cap = StrokeCap.Round))
-            }
-            Text(value, color = Smoke.pearl, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, style = tnum, maxLines = 1)
-        }
-        Text(label, color = colors[0], fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}

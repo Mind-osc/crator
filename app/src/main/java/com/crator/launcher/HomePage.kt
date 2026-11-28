@@ -243,8 +243,8 @@ internal fun HomePage(
         }
         Spacer(Modifier.height(bottomPad))
     }
-    // κουμπί edit της σελίδας
-    Box(
+    // κουμπί «Τέλος» — εμφανίζεται μόνο σε επεξεργασία (μπαίνεις από το παρατεταμένο πάτημα στη σελίδα)
+    if (editing) Box(
         Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 4.dp, end = 12.dp).size(34.dp)
             .smokedGlass(CircleShape, alpha = if (editing) 0.85f else 0.35f, tint = if (editing) MaterialTheme.colorScheme.primary else Smoke.graphite)
             .clickable(onClick = onToggleEdit),
