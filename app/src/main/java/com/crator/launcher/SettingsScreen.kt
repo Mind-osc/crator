@@ -436,6 +436,8 @@ private fun DrawerSection(p: Prefs, repo: AppRepository) {
 @Composable
 private fun DashSection(p: Prefs) {
     SwitchPref("Αριστερή σελίδα ταμπλό", p.dashboardEnabled, "RAM, CPU, χώρος, δίκτυο, μπαταρία + συντομεύσεις") { p.dashboardEnabled = it }
+    SwitchPref("Δόνηση καντράν", p.dashTickHaptic, "Κρ-κρ-κρ όσο γυρνάς προς το ταμπλό") { p.dashTickHaptic = it }
+    SwitchPref("Ήχος καντράν", p.dashTickSound, "Μικρά κλικ (μόνο όταν το κινητό δεν είναι στο αθόρυβο)") { p.dashTickSound = it }
     SliderPref("Ανανέωση κάθε", p.dashRefresh, 500..5000, " ms") { p.dashRefresh = it }
     SliderPref("Ιστορικό γραφημάτων", p.dashHistory, 20..180, " σημεία") { p.dashHistory = it }
     Group("Εμφάνιση")

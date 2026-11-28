@@ -205,6 +205,9 @@ class Prefs(private val context: Context) {
     var dashScale by int("dash_scale", 100)
     /** πόσο ψηλά από το κάτω μέρος κάθεται ο πίνακας του ταμπλό (dp) */
     var dashLift by int("dash_lift", 0)
+    /** κρ-κρ-κρ (δόνηση/ήχος) όσο γυρνάς προς το ταμπλό */
+    var dashTickHaptic by bool("dash_tick_haptic", true)
+    var dashTickSound by bool("dash_tick_sound", true)
     /** Ρολόι ταμπλό (Orbitron): ύψος σε dp και μαύρα/λευκά γράμματα */
     var dashClockH by int("dash_clock_h", 120)
     var dashClockDark by bool("dash_clock_dark", false)

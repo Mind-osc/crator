@@ -77,6 +77,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.mutableStateOf
@@ -145,6 +146,19 @@ fun CratorRoot(activity: MainActivity, prefs: Prefs, repo: AppRepository) {
     val dashOffset = if (prefs.dashboardEnabled) 1 else 0
     val pageCount = prefs.homePages + dashOffset
     val pager = rememberPagerState(initialPage = dashOffset) { pageCount }
+    // Καντράν: όσο η σελίδα γυρνάει από/προς το ταμπλό, «κρ» ανά 1/12 της διαδρομής
+    val ratchet = remember { Ratchet(activity) }
+    DisposableEffect(Unit) { onDispose { ratchet.release() } }
+    LaunchedEffect(pager, prefs.dashboardEnabled) {
+        if (!prefs.dashboardEnabled) return@LaunchedEffect
+        var last = Int.MIN_VALUE
+        snapshotFlow { pager.currentPage + pager.currentPageOffsetFraction }.collect { pos ->
+            val step = (pos.coerceIn(0f, 1f) * 12f).toInt()
+            if (last != Int.MIN_VALUE && step != last && (prefs.dashTickHaptic || prefs.dashTickSound))
+                ratchet.tick(prefs.dashTickHaptic, prefs.dashTickSound)
+            last = step
+        }
+    }
     val scope = rememberCoroutineScope()
     val stats = remember { SysStats(activity) }
     val drag = remember { DragState() }
