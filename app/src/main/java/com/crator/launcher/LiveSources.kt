@@ -466,8 +466,8 @@ data class ScreenTime(val totalMs: Long, val top: List<Pair<String, Long>>)
 data class DataUse(val wifiBytes: Long, val mobileBytes: Long)
 
 object UsageFeed {
-    private val screenShared = Shared<Context, Feed<ScreenTime>> { ctx -> LiveScope.accessTick.flatMapLatest { poll(ctx) { screen(ctx) } } }
-    private val dataShared = Shared<Context, Feed<DataUse>> { ctx -> LiveScope.accessTick.flatMapLatest { poll(ctx) { data(ctx) } } }
+    private val screenShared = Shared<Context, Feed<ScreenTime>> { ctx -> LiveScope.accessTick.flatMapLatest { poll(ctx) { readScreen(ctx) } } }
+    private val dataShared = Shared<Context, Feed<DataUse>> { ctx -> LiveScope.accessTick.flatMapLatest { poll(ctx) { readData(ctx) } } }
     fun screen(ctx: Context): SharedFlow<Feed<ScreenTime>> = screenShared.get(ctx.applicationContext)
     fun data(ctx: Context): SharedFlow<Feed<DataUse>> = dataShared.get(ctx.applicationContext)
 
@@ -490,7 +490,7 @@ object UsageFeed {
     }.timeInMillis
 
     /** Από τα γεγονότα (resume/pause) — πιο ακριβές από τα «κουτιά» του queryUsageStats */
-    private fun screen(ctx: Context): ScreenTime {
+    private fun readScreen(ctx: Context): ScreenTime {
         val usm = ctx.getSystemService(UsageStatsManager::class.java)
         val start = startOfDay(); val now = System.currentTimeMillis()
         val events = usm.queryEvents(start, now)
@@ -517,7 +517,7 @@ object UsageFeed {
         return ScreenTime(sum.values.sum(), top)
     }
 
-    private fun data(ctx: Context): DataUse {
+    private fun readData(ctx: Context): DataUse {
         val nsm = ctx.getSystemService(NetworkStatsManager::class.java)
         val start = startOfDay(); val now = System.currentTimeMillis()
         fun total(type: Int): Long = runCatching {

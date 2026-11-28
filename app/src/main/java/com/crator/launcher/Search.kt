@@ -2,6 +2,10 @@
 
 package com.crator.launcher
 
+import androidx.compose.foundation.layout.isImeVisible
+
+import androidx.compose.foundation.layout.WindowInsets
+
 import androidx.compose.foundation.border
 
 import androidx.compose.animation.animateContentSize
@@ -127,7 +131,7 @@ fun SearchScreen(
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     // Κρύβεις το πληκτρολόγιο χωρίς να έχεις γράψει τίποτα → η αναζήτηση κλείνει (όχι άδεια οθόνη με μπάρα κάτω)
     @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-    val imeOpen = androidx.compose.foundation.layout.WindowInsets.isImeVisible
+    val imeOpen = WindowInsets.isImeVisible
     var imeSeen by remember { mutableStateOf(false) }
     LaunchedEffect(imeOpen) {
         if (imeOpen) imeSeen = true
